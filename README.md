@@ -27,6 +27,18 @@ On Mac, open the DMG and drag Folio into Applications. To update, quit the old v
 
 Mac builds are not Developer ID signed or notarized; Windows builds are unsigned. Tested on Apple Silicon. Intel Mac has not been tested on hardware, and Windows packages have only passed static checks.
 
+## Update history
+
+<!-- Add every release to both READMEs, newest first. Keep earlier entries. -->
+
+| Version | Changes |
+| --- | --- |
+| [0.3.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.3.0) | English and Chinese UI, menus, and note exports; GitHub update checks and verified installer downloads. |
+| [0.2.2](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.2.2) | Add comments to selected text from the context menu; edit or delete annotations, with undo. First GitHub release. |
+| 0.2.1 | Drag the floating AI companion and remember its position. |
+| 0.2.0 | Compact navigation, floating AI panel, focus mode, underlines, strikethroughs, and undo/redo. |
+| 0.1.0 | Initial reader: paper workspaces, split PDFs with independent zoom, AI assistance, and Obsidian export. |
+
 ## Development
 
 Node.js 24 and npm are required.

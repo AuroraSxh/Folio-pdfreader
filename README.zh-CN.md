@@ -27,6 +27,18 @@ Mac 打开 DMG 后，将 Folio 拖入「应用程序」；更新时退出旧版�
 
 目前未做 Apple Developer ID 签名及公证，Windows 包也未签名。Mac 已在 Apple Silicon 上测试，Intel Mac 未实机验证；Windows 已完成打包与静态检查，尚未实机测试。[Windows 使用说明](docs/windows.md)
 
+## 更新记录
+
+<!-- 每次发布同步更新两份 README，最新版本在前，保留已有记录。 -->
+
+| 版本 | 主要变化 |
+| --- | --- |
+| [0.3.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.3.0) | 界面、菜单和笔记导出支持中英文；增加 GitHub 新版检测和安装包下载校验。 |
+| [0.2.2](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.2.2) | 选文右键添加批注，已有批注可编辑、删除和撤销；首次发布到 GitHub。 |
+| 0.2.1 | AI 悬浮框可自由拖动，并记住位置。 |
+| 0.2.0 | 精简导航、AI 悬浮框、专注阅读、下划线、删除线及撤销/重做。 |
+| 0.1.0 | 初版：论文工作区、PDF 分栏与独立缩放、AI 辅助阅读和 Obsidian 导出。 |
+
 ## 本地开发
 
 使用 Node.js 24 和 npm。
