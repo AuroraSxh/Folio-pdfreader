@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AudioLines, ChevronDown, Download, Mic, MicOff, Pause, SlidersHorizontal, Volume2, X } from 'lucide-react';
+import { AudioLines, ChevronDown, Download, Mic, MicOff, Pause, RefreshCw, SlidersHorizontal, Volume2, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import type { VoiceController, VoicePhase, VoiceState } from '../hooks/voiceConversation';
+import type { InstalledVoice, VoiceQuality } from '../../shared/voice';
+import VoiceGuide from './VoiceGuide';
 import './voice-controls.css';
 
 const ERRORS: Record<string, [string, string]> = {
@@ -16,7 +18,7 @@ const ERRORS: Record<string, [string, string]> = {
   'needs-model-download': ['需要先下载此语言的 Apple 语音模型。', 'Download the Apple speech model for this language first.'],
   'model-download-failed': ['语音模型下载未完成。请检查网络，然后手动重试。', 'The speech model download did not finish. Check your connection and retry.'],
   'audio-unavailable': ['无法使用音频设备。请检查麦克风连接和系统输入设备，然后重试。', 'The audio device is unavailable. Check your microphone and system input device, then retry.'],
-  'voice-unavailable': ['所选音色不可用，请改用系统默认音色。', 'This voice is unavailable. Choose the system default voice.'],
+  'voice-unavailable': ['所选音色不可用，请刷新音色列表或改用自动选择。', 'This voice is unavailable. Refresh the voice list or choose automatic selection.'],
   'synthesis-failed': ['朗读未能完成。回答已保留在对话中，可重试语音或继续文字阅读。', 'Read-aloud could not finish. The answer remains in your chat; retry voice or continue reading.'],
   'recognition-failed': ['语音识别中断。请检查麦克风并手动重试。', 'Speech recognition stopped. Check your microphone and retry.'],
   'helper-unavailable': ['此安装中的 Apple 语音组件不可用，请重新安装支持语音的 Folio 版本。', 'The Apple speech component is unavailable in this installation. Reinstall a voice-enabled Folio build.'],
@@ -37,26 +39,60 @@ const PHASES: Record<VoicePhase, [string, string]> = {
   idle: ['语音对话', 'Voice conversation'], checking: ['正在准备语音…', 'Preparing voice…'],
   download: ['需要语音模型', 'Speech model needed'], starting: ['正在开启麦克风…', 'Starting microphone…'],
   listening: ['正在聆听', 'Listening'], thinking: ['正在思考', 'Thinking'], speaking: ['正在朗读', 'Speaking'],
+  previewing: ['正在试听音色', 'Previewing voices'],
   finishing: ['正在保存阅读记忆…', 'Finishing reading memory…'], paused: ['语音已暂停', 'Voice paused'], error: ['语音已停止', 'Voice stopped'],
 };
+const QUALITY_LABELS: Record<VoiceQuality, [string, string]> = { default: ['普通', 'Standard'], enhanced: ['增强', 'Enhanced'], premium: ['高级', 'Premium'] };
+const QUALITY_RANK: Record<VoiceQuality, number> = { default: 0, enhanced: 1, premium: 2 };
+function languageVoices(voices: InstalledVoice[], language: string) {
+  return voices.filter(voice => voice.language.toLowerCase().startsWith(language))
+    .sort((a, b) => QUALITY_RANK[b.quality ?? 'default'] - QUALITY_RANK[a.quality ?? 'default'] || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
 
 export default function VoiceControls({ host, state, controller, onSettings }: {
   host?: HTMLElement | null; state: VoiceState; controller: VoiceController; onSettings: () => void;
 }) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => { if (state.active) setExpanded(true); }, [state.active]);
   if (!state.active || !host) return null;
   const configurable = ['paused', 'error', 'download'].includes(state.phase);
   const hearing = ['checking', 'starting', 'listening'].includes(state.phase);
   const answering = ['thinking', 'speaking', 'finishing'].includes(state.phase);
   const error = state.error && ERRORS[state.error] || (state.error ? ERRORS['recognition-failed'] : undefined);
-  const voices = state.capabilities?.voices.filter(voice => voice.language.toLowerCase().startsWith(state.preferences.locale.split('-')[0])) ?? [];
+  const allVoices = state.capabilities?.voices ?? [];
+  const readingVoices = allVoices.filter(voice => /^(zh|en)(-|$)/i.test(voice.language));
+  const standardVoicesOnly = readingVoices.length > 0 && readingVoices.every(voice => (voice.quality ?? 'default') === 'default');
+  const previewing = state.phase === 'previewing';
+  const startListening = (allowModelDownload = false) => { setExpanded(false); void controller.start(allowModelDownload); };
+  const voicePicker = (language: 'zh' | 'en', label: [string, string], field: 'chineseVoiceId' | 'englishVoiceId') => {
+    const voices = languageVoices(allVoices, language), selected = state.preferences[field];
+    return <label><span>{t(...label)}</span><select aria-label={t(...label)} disabled={!configurable} value={selected} onChange={event => controller.setPreferences({ ...state.preferences, [field]: event.target.value })}>
+      <option value="">{t('自动选择最佳可用音色', 'Best available voice')}</option>
+      {selected && !voices.some(voice => voice.id === selected) && <option value={selected}>{t('已保存的音色（暂不可用）', 'Saved voice (unavailable)')}</option>}
+      {voices.map(voice => <option key={voice.id} value={voice.id}>{voice.name} · {t(...QUALITY_LABELS[voice.quality ?? 'default'])} · {voice.language}</option>)}
+    </select></label>;
+  };
   return createPortal(<section className="fl-voice-controls" aria-label={t('语音对话控制', 'Voice conversation controls')} data-phase={state.phase}>
-    <header className="fl-voice-heading"><span className="fl-voice-symbol">{state.phase === 'speaking' ? <Volume2 size={19} /> : state.phase === 'listening' ? <Mic size={19} /> : <AudioLines size={19} />}</span><div><strong role="status">{t(...PHASES[state.phase])}</strong><small>{state.phase === 'listening' ? t('停顿约 1.4 秒后自动发送', 'A short pause sends your question') : state.phase === 'speaking' ? t('麦克风已暂停，避免回声', 'Microphone paused to prevent echo') : t('Apple 语音 · 当前论文对话', 'Apple speech · This paper’s chat')}</small></div><button className="fl-voice-icon" aria-label={t('语音选项', 'Voice options')} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}><SlidersHorizontal size={16} /></button><button className="fl-voice-icon" aria-label={t('结束语音对话', 'End voice conversation')} title={t('停止麦克风、朗读和本轮语音回答', 'Stop microphone, read-aloud, and this voice response')} onClick={() => void controller.end()}><X size={17} /></button></header>
+    <header className="fl-voice-heading"><span className="fl-voice-symbol">{state.phase === 'speaking' || previewing ? <Volume2 size={19} /> : state.phase === 'listening' ? <Mic size={19} /> : <AudioLines size={19} />}</span><div><strong role="status">{t(...PHASES[state.phase])}</strong><small>{state.phase === 'listening' ? t('停顿约 1.4 秒后自动发送', 'A short pause sends your question') : previewing ? t('只播放示例 · 麦克风关闭', 'Sample only · Microphone off') : state.phase === 'speaking' ? t('麦克风已暂停，避免回声', 'Microphone paused to prevent echo') : t('Apple 语音 · 当前论文对话', 'Apple speech · This paper’s chat')}</small></div><button className="fl-voice-icon" aria-label={t('语音选项', 'Voice options')} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}><SlidersHorizontal size={16} /></button><button className="fl-voice-icon" aria-label={t('结束语音对话', 'End voice conversation')} title={t('停止麦克风、朗读和本轮语音回答', 'Stop microphone, read-aloud, and this voice response')} onClick={() => void controller.end()}><X size={17} /></button></header>
     {state.transcript && <p className="fl-voice-transcript" aria-label={t('语音转写', 'Voice transcript')}>{state.transcript}</p>}
     {error && state.phase !== 'download' && <p className="fl-voice-error" role="alert">{t(...error)}{state.error === 'missing-key' && <button onClick={onSettings}>{t('打开 AI 设置', 'Open AI settings')}</button>}</p>}
-    {state.phase === 'download' && <div className="fl-voice-download"><p>{t('此语言需要下载 Apple 语音模型。只有点击下面的按钮才开始下载；下载完成后会开启麦克风。', 'This language needs an Apple speech model. Download begins only when you click below; the microphone starts after it is ready.')}</p><button className="fl-voice-primary" onClick={() => void controller.start(true)}><Download size={14} />{t('下载模型并开始', 'Download model and start')}</button></div>}
-    {expanded && <div className="fl-voice-options"><label><span>{t('对话语言', 'Conversation language')}</span><select aria-label={t('语音语言', 'Voice language')} disabled={!configurable} value={state.preferences.locale} onChange={event => controller.setPreferences({ ...state.preferences, locale: event.target.value as 'zh-CN' | 'en-US', voiceId: '' })}><option value="zh-CN">中文（普通话）</option><option value="en-US">English</option></select></label><label><span>{t('朗读音色', 'Reading voice')}</span><select aria-label={t('朗读音色', 'Reading voice')} disabled={!configurable} value={state.preferences.voiceId} onChange={event => controller.setPreferences({ ...state.preferences, voiceId: event.target.value })}><option value="">{t('系统默认', 'System default')}</option>{state.preferences.voiceId && !voices.some(voice => voice.id === state.preferences.voiceId) && <option value={state.preferences.voiceId}>{t('已保存的音色', 'Saved voice')}</option>}{voices.map(voice => <option key={voice.id} value={voice.id}>{voice.name}</option>)}</select></label><label><span>{t('朗读速度', 'Reading speed')}</span><select aria-label={t('朗读速度', 'Reading speed')} disabled={!configurable} value={state.preferences.rate} onChange={event => controller.setPreferences({ ...state.preferences, rate: Number(event.target.value) })}>{[[0.35, t('较慢', 'Slower')], [0.45, t('舒缓', 'Relaxed')], [0.5, t('标准', 'Normal')], [0.55, t('较快', 'Faster')], [0.65, t('快速', 'Fast')]].map(([rate, label]) => <option key={rate} value={rate}>{label}</option>)}</select></label><p>{configurable ? t('偏好仅保存在本机。语音问题与回答会保留在当前对话中。', 'Preferences stay on this device. Voice questions and answers stay in the current chat.') : t('先暂停语音，即可调整语言、音色与速度。', 'Pause voice to adjust language, voice, and speed.')}</p></div>}
-    {state.phase !== 'download' && <footer className="fl-voice-actions">{hearing ? <button className="fl-voice-primary" onClick={() => void controller.pause()}><Pause size={14} />{t('暂停聆听', 'Pause listening')}</button> : answering ? <><button className="fl-voice-primary" onClick={() => void controller.interrupt()}><Mic size={14} />{t('打断并讲话', 'Interrupt and speak')}</button><button className="fl-voice-secondary" aria-label={t('暂停语音', 'Pause voice')} onClick={() => void controller.pause()}><Pause size={14} /></button></> : <button className="fl-voice-primary" onClick={() => void controller.start()}><Mic size={14} />{state.phase === 'error' ? t('重试语音', 'Retry voice') : t('继续聆听', 'Resume listening')}</button>}<button className="fl-voice-end" onClick={() => void controller.end()}><MicOff size={13} />{t('结束', 'End')}</button>{!expanded && <button className="fl-voice-locale" onClick={() => setExpanded(true)}>{state.preferences.locale === 'zh-CN' ? '中文' : 'EN'}<ChevronDown size={11} /></button>}</footer>}
+    {state.phase === 'download' && <div className="fl-voice-download"><p>{t('此语言需要下载 Apple 语音模型。只有点击下面的按钮才开始下载；下载完成后会开启麦克风。', 'This language needs an Apple speech model. Download begins only when you click below; the microphone starts after it is ready.')}</p><button className="fl-voice-primary" onClick={() => startListening(true)}><Download size={14} />{t('下载模型并开始', 'Download model and start')}</button></div>}
+    {expanded && <div className="fl-voice-options">
+      <p>{t('语音默认关闭，点击「开始聆听」后才使用麦克风。', 'Voice is off by default. The microphone starts only when you select Start listening.')}</p>
+      <label><span>{t('识别语言', 'Recognition language')}</span><select aria-label={t('识别语言', 'Recognition language')} disabled={!configurable} value={state.preferences.locale} onChange={event => controller.setPreferences({ ...state.preferences, locale: event.target.value as 'zh-CN' | 'en-US' })}><option value="zh-CN">中文（普通话）</option><option value="en-US">English</option></select></label>
+      <p>{t('用于识别你的提问，也决定 AI 回答的语言。', 'Used for your spoken questions and the language of AI replies.')}</p>
+      <label><span>{t('朗读模式', 'Reading mode')}</span><select aria-label={t('朗读模式', 'Reading mode')} disabled={!configurable} value={state.preferences.readingMode} onChange={event => controller.setPreferences({ ...state.preferences, readingMode: event.target.value as 'auto' | 'zh-CN' | 'en-US' })}><option value="auto">{t('自动中英文混读', 'Automatic Chinese / English')}</option><option value="zh-CN">{t('始终使用中文音色', 'Always use Chinese voice')}</option><option value="en-US">{t('始终使用英文音色', 'Always use English voice')}</option></select></label>
+      {voicePicker('zh', ['中文音色', 'Chinese voice'], 'chineseVoiceId')}
+      {voicePicker('en', ['英文音色', 'English voice'], 'englishVoiceId')}
+      <label><span>{t('朗读速度', 'Reading speed')}</span><select aria-label={t('朗读速度', 'Reading speed')} disabled={!configurable} value={state.preferences.rate} onChange={event => controller.setPreferences({ ...state.preferences, rate: Number(event.target.value) })}>{[[0.35, t('较慢', 'Slower')], [0.45, t('舒缓', 'Relaxed')], [0.5, t('标准', 'Normal')], [0.55, t('较快', 'Faster')], [0.65, t('快速', 'Fast')]].map(([rate, label]) => <option key={rate} value={rate}>{label}</option>)}</select></label>
+      <p>{t('英文单词和短语连续朗读，常见实验符号按读法处理；完整引用保留在聊天中。', 'English words and phrases are read continuously, with spoken forms for common scientific notation. Full citations stay in the chat.')}</p>
+      <div className="fl-voice-preview-actions"><button className="fl-voice-secondary" aria-label={t('试听音色', 'Preview voices')} disabled={!configurable} onClick={() => void controller.preview()}><Volume2 size={14} />{t('试听音色', 'Preview voices')}</button><button className="fl-voice-refresh" aria-label={t('刷新音色', 'Refresh voices')} disabled={!configurable} onClick={() => void controller.refreshVoices()}><RefreshCw size={13} />{t('刷新音色', 'Refresh voices')}</button></div>
+      <p>{t('试听一段中英混合示例，无需 API Key，也不会开启麦克风或写入对话。', 'Preview a mixed-language sample. No API key, microphone, or chat entry is needed.')}</p>
+      {standardVoicesOnly && <p className="fl-voice-quality-note">{t('当前可用的中英文音色均为普通音质。可在系统设置下载增强／高级音色，再刷新。', 'The available Chinese and English voices are all Standard quality. Download Enhanced / Premium voices in System Settings, then refresh.')}</p>}
+      <VoiceGuide/>
+      {!configurable && !previewing && <p>{t('先暂停语音，即可调整语言、音色与速度。', 'Pause voice to adjust language, voice, and speed.')}</p>}
+    </div>}
+    {state.phase !== 'download' && <footer className="fl-voice-actions">{previewing ? <button className="fl-voice-primary" aria-label={t('停止试听', 'Stop preview')} onClick={() => void controller.stopPreview()}><Pause size={14} />{t('停止试听', 'Stop preview')}</button> : hearing ? <button className="fl-voice-primary" onClick={() => void controller.pause()}><Pause size={14} />{t('暂停聆听', 'Pause listening')}</button> : answering ? <><button className="fl-voice-primary" onClick={() => { setExpanded(false); void controller.interrupt(); }}><Mic size={14} />{t('打断并讲话', 'Interrupt and speak')}</button><button className="fl-voice-secondary" aria-label={t('暂停语音', 'Pause voice')} onClick={() => void controller.pause()}><Pause size={14} /></button></> : <button className="fl-voice-primary" onClick={() => startListening()}><Mic size={14} />{state.phase === 'error' ? t('重试语音', 'Retry voice') : state.transcript ? t('继续聆听', 'Resume listening') : t('开始聆听', 'Start listening')}</button>}<button className="fl-voice-end" onClick={() => void controller.end()}><MicOff size={13} />{t('结束', 'End')}</button>{!expanded && <button className="fl-voice-locale" onClick={() => setExpanded(true)}>{state.preferences.locale === 'zh-CN' ? '中文' : 'EN'}<ChevronDown size={11} /></button>}</footer>}
   </section>, host);
 }

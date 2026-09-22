@@ -6,13 +6,16 @@ export type VoiceErrorCode =
   | 'voice-unavailable' | 'synthesis-failed' | 'stale-session' | 'cancelled'
   | 'finalization-timeout' | 'helper-unavailable' | 'helper-exited' | 'timeout' | 'protocol-error' | 'disposed';
 
+export type VoiceQuality = 'default' | 'enhanced' | 'premium';
+export interface InstalledVoice { id: string; name: string; language: string; quality?: VoiceQuality }
+
 export interface VoiceCapabilities {
   available: boolean;
   engine: 'speech-analyzer' | 'speech-recognizer' | 'unsupported';
   /** Stable code; never includes native diagnostics or recognized text. */
   reason?: string;
   locales: string[];
-  voices: { id: string; name: string; language: string }[];
+  voices: InstalledVoice[];
   needsModelDownload?: boolean;
 }
 
@@ -22,6 +25,14 @@ export interface VoiceListenOptions {
   allowModelDownload?: boolean;
 }
 
+export interface VoiceSpeakSegment {
+  text: string;
+  locale: string;
+  voiceId?: string;
+  /** Extra pause after a sentence/paragraph, in seconds (0–0.5). */
+  pauseAfter?: number;
+}
+
 export interface VoiceSpeakOptions {
   sessionId: string;
   text: string;
@@ -29,6 +40,8 @@ export interface VoiceSpeakOptions {
   voiceId?: string;
   /** Native AVSpeechUtterance rate, from 0.1 to 1. Omit for the system default. */
   rate?: number;
+  /** One native playback session; never reopen the microphone between segments. */
+  segments?: VoiceSpeakSegment[];
 }
 
 export interface VoiceEvent {

@@ -1,7 +1,17 @@
 import type { VoiceCapabilities, VoiceEvent, VoiceListenOptions, VoiceSpeakOptions } from '../../shared/voice';
+import { buildSpeechPlan } from './speechPlan';
+import type { SpeechSource } from './speechCitations';
+export { spokenText } from './speechPlan';
 
-export type VoicePhase = 'idle' | 'checking' | 'download' | 'starting' | 'listening' | 'thinking' | 'speaking' | 'finishing' | 'paused' | 'error';
-export interface VoicePreferences { locale: 'zh-CN' | 'en-US'; voiceId: string; rate: number }
+export type VoicePhase = 'idle' | 'checking' | 'download' | 'starting' | 'listening' | 'thinking' | 'speaking' | 'previewing' | 'finishing' | 'paused' | 'error';
+export interface VoicePreferences {
+  locale: 'zh-CN' | 'en-US';
+  readingMode: 'auto' | 'zh-CN' | 'en-US';
+  chineseVoiceId: string;
+  englishVoiceId: string;
+  rate: number;
+}
+export const VOICE_PREVIEW_TEXT = '这篇论文分析 CD4+ T cells，并比较 fl/fl 小鼠。The results need further validation.';
 export interface VoiceState {
   active: boolean; phase: VoicePhase; transcript: string; error?: string;
   preferences: VoicePreferences; capabilities?: VoiceCapabilities;
@@ -16,6 +26,8 @@ export interface VoiceAPI {
 interface Options {
   api: VoiceAPI;
   preferences: VoicePreferences;
+  /** Current article sources, used only to shorten citations in spoken answers. */
+  speechSources?: () => SpeechSource[];
   /** Check synchronously before microphone activation and before an AI request. */
   ready(): string | undefined;
   /** Uses the normal chat pipeline; resolves only after its generation task ends. */
@@ -32,14 +44,6 @@ export function voiceErrorCode(error: unknown): string {
   return value.match(/\[([a-z][a-z-]+)\]/)?.[1] ?? 'recognition-failed';
 }
 
-/** Markdown stays intact in history. Only speech omits formatting and link URLs. */
-export function spokenText(markdown: string): string {
-  return markdown.replace(/```[^\n]*\n[\s\S]*?```/g, '')
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s*|[-*+]\s+)/gm, '')
-    .replace(/[*_`~]/g, '').replace(/\n{3,}/g, '\n\n').trim();
-}
-
 /** Event-driven turn taking. There is no idle polling, audio capture, or timer
  * until an explicit start. Epochs reject every late native/AI continuation. */
 export function createVoiceConversation(options: Options) {
@@ -52,6 +56,7 @@ export function createVoiceConversation(options: Options) {
   let epoch = 0;
   let listenId: string | null = null;
   let speechId: string | null = null;
+  let playback: 'answer' | 'preview' | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let nativeStarting: Promise<void> | null = null;
@@ -67,7 +72,7 @@ export function createVoiceConversation(options: Options) {
     ++epoch;
     clearSilence(); clearIdle();
     const listening = listenId, speaking = speechId, starting = nativeStarting;
-    listenId = null; speechId = null; nativeStarting = null;
+    listenId = null; speechId = null; playback = null; nativeStarting = null;
     publish({ active, phase, error });
     // Native synthesis stop is global, so no new session may start before this
     // queue drains. Await ACK first so cancelling an in-flight start cannot leak.
@@ -112,13 +117,12 @@ export function createVoiceConversation(options: Options) {
   async function speak(token: number, text: string) {
     if (!valid(token) || answered) return;
     answered = true;
-    const speech = spokenText(text);
-    if (!speech) { speechDone = true; next(token); return; }
-    const sessionId = id(); speechId = sessionId;
+    const plan = buildSpeechPlan(text, state.preferences, options.speechSources?.());
+    if (!plan.text) { speechDone = true; next(token); return; }
+    const sessionId = id(); speechId = sessionId; playback = 'answer';
     publish({ phase: 'speaking' });
     try {
-      const { locale, voiceId, rate } = state.preferences;
-      const starting = api.voiceSpeak({ sessionId, text: speech, locale, ...(voiceId ? { voiceId } : {}), rate });
+      const starting = api.voiceSpeak({ sessionId, ...plan, rate: state.preferences.rate });
       nativeStarting = starting;
       await starting;
       if (nativeStarting === starting) nativeStarting = null;
@@ -166,6 +170,34 @@ export function createVoiceConversation(options: Options) {
     } catch (error) { fail(token, voiceErrorCode(error)); }
   }
 
+  /** Opening options and refreshing installed voices never checks AI readiness,
+   * requests permissions, installs a model, or starts audio capture. */
+  async function configure() {
+    const pending = halt('checking', true);
+    const token = epoch;
+    await pending;
+    if (!valid(token)) return;
+    try {
+      const capabilities = await api.voiceCapabilities(state.preferences.locale);
+      if (valid(token)) publish({ capabilities, phase: 'paused', error: undefined });
+    } catch (error) { fail(token, voiceErrorCode(error)); }
+  }
+
+  async function preview() {
+    const pending = halt('previewing', true);
+    const token = epoch;
+    await pending;
+    if (!valid(token)) return;
+    const plan = buildSpeechPlan(VOICE_PREVIEW_TEXT, state.preferences);
+    const sessionId = id(); speechId = sessionId; playback = 'preview';
+    try {
+      const starting = api.voiceSpeak({ sessionId, ...plan, rate: state.preferences.rate });
+      nativeStarting = starting;
+      await starting;
+      if (nativeStarting === starting) nativeStarting = null;
+    } catch (error) { fail(token, voiceErrorCode(error)); }
+  }
+
   function handleEvent(event: VoiceEvent) {
     if (!state.active) return;
     if (event.sessionId === listenId) {
@@ -186,7 +218,10 @@ export function createVoiceConversation(options: Options) {
       if (event.type === 'error') { fail(epoch, event.code || 'synthesis-failed'); return; }
       if (event.type === 'speech-end') {
         if (event.code) { fail(epoch, event.code); return; }
-        speechId = null; speechDone = true; next(epoch);
+        const previewEnded = playback === 'preview';
+        speechId = null; playback = null;
+        if (previewEnded) { publish({ phase: 'paused', error: undefined }); return; }
+        speechDone = true; next(epoch);
       }
     }
   }
@@ -194,13 +229,20 @@ export function createVoiceConversation(options: Options) {
   return {
     getState: () => state,
     subscribe(callback: (value: VoiceState) => void) { listeners.add(callback); return () => { listeners.delete(callback); }; },
-    handleEvent, start, finishTurn,
+    handleEvent, start, finishTurn, configure, preview,
+    refreshVoices: () => {
+      if (state.active && ['paused', 'error', 'download'].includes(state.phase)) return configure();
+      return Promise.resolve();
+    },
+    stopPreview: () => state.phase === 'previewing' ? halt('paused', true) : Promise.resolve(),
     pause: () => halt('paused', true),
     end: () => halt('idle', false),
     async interrupt() { const pending = halt('paused', true); const token = epoch; await pending; if (valid(token)) await start(); },
     setPreferences(preferences: VoicePreferences) {
       if (state.active && !['paused', 'error', 'download'].includes(state.phase)) return;
-      publish({ preferences, capabilities: state.preferences.locale === preferences.locale ? state.capabilities : undefined });
+      // Installed TTS voices are language-independent. Keep that list visible;
+      // start() always checks recognition support again for the current locale.
+      publish({ preferences });
     },
   };
 }

@@ -330,3 +330,46 @@ test('legacy capability empty reasons are omitted and native cancellation codes 
   f.children[0].event({ sessionId: 'speaker', type: 'speech-end', code: 'cancelled' });
   assert.deepEqual(f.events.at(-1), { sessionId: 'speaker', type: 'speech-end', code: 'cancelled' });
 });
+
+test('voice quality metadata survives capability normalization; unrecognized grades are rejected', async t => {
+  const f = fixture(t, { handler: (message, helper) => {
+    if (message.command === 'capabilities') helper.ack(message, { ...CAPABILITIES, voices: [
+      { id: 'com.apple.voice.zh', name: 'Chinese', language: 'zh_CN', quality: 'premium' },
+      { id: 'com.apple.voice.en', name: 'English', language: 'en_US', quality: 'enhanced' },
+    ] }); else helper.defaultReply(message);
+  } });
+  const result = await f.service.capabilities('zh-CN');
+  assert.deepEqual(result.voices.map(v => [v.language, v.quality]), [['zh-CN', 'premium'], ['en-US', 'enhanced']]);
+  f.children[0].handler = (message, helper) => message.command === 'capabilities'
+    ? helper.ack(message, { ...CAPABILITIES, voices: [{ ...CAPABILITIES.voices[0], quality: 'unexpected' }] }) : helper.defaultReply(message);
+  assert.equal((await f.service.capabilities('zh-CN')).reason, 'protocol-error');
+});
+
+test('mixed-language playback remains one job, blocks capture until final completion, and forwards bounded pauses and voices', async t => {
+  const f = fixture(t);
+  const segments = [
+    { text: '中文包含 T cells。', locale: 'zh-cn', voiceId: 'com.apple.voice.zh', pauseAfter: 0 },
+    { text: 'An English sentence.', locale: 'en-us', voiceId: 'com.apple.voice.en', pauseAfter: 0.12 },
+  ];
+  await f.service.speak({ sessionId: 'mixed', text: segments.map(s => s.text).join(''), locale: 'zh-CN', rate: 0.45, segments });
+  const command = f.children[0].commands[0] as unknown as { segments: typeof segments };
+  assert.deepEqual(command.segments.map(s => s.locale), ['zh-CN', 'en-US']);
+  assert.equal(command.segments[1].pauseAfter, 0.12);
+  await assert.rejects(f.service.listen({ sessionId: 'mic', locale: 'zh-CN' }), code('busy'));
+  f.children[0].event({ sessionId: 'mixed', type: 'speech-end' });
+  await f.service.listen({ sessionId: 'mic', locale: 'zh-CN' });
+  assert.equal(f.events.filter(e => e.type === 'speech-end').length, 1);
+});
+
+test('malformed speech plans never spawn the helper, and large valid plans remain within the command budget', async t => {
+  const f = fixture(t), valid = { text: 'a', locale: 'en-US' };
+  const plans: unknown[] = [[], null, {}, [null], Array(257).fill(valid), [{ ...valid, text: '' }],
+    [{ ...valid, text: 'a\0' }], [{ ...valid, locale: '../bad' }], [{ ...valid, voiceId: 'external' }],
+    [{ ...valid, pauseAfter: -1 }], [{ ...valid, pauseAfter: NaN }], [{ ...valid, pauseAfter: 0.51 }],
+    [{ ...valid, text: 'different' }], [{ ...valid, text: 'a'.repeat(MAX_VOICE_TEXT_BYTES + 1) }]];
+  for (const segments of plans) await assert.rejects(f.service.speak({ sessionId: 'invalid', text: 'a', locale: 'en-US', segments } as Parameters<typeof f.service.speak>[0]), code('invalid-request'));
+  assert.equal(f.children.length, 0);
+  const text = 'a'.repeat(MAX_VOICE_TEXT_BYTES);
+  await f.service.speak({ sessionId: 'large', text, locale: 'en-US', segments: [{ text, locale: 'en-US' }] });
+  assert.equal(f.children[0].commands.filter(c => c.command === 'speak').length, 1);
+});

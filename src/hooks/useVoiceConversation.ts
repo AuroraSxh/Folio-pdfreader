@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { createVoiceConversation, type VoicePreferences } from './voiceConversation';
+import type { SpeechSource } from './speechCitations';
 
 const PREFERENCES_KEY = 'folio.voice-preferences.v1';
 export function readVoicePreferences(locale: string, raw?: string | null): VoicePreferences {
-  const fallback: VoicePreferences = { locale: locale === 'en-US' ? 'en-US' : 'zh-CN', voiceId: '', rate: 0.5 };
+  const fallback: VoicePreferences = { locale: locale === 'en-US' ? 'en-US' : 'zh-CN', readingMode: 'auto', chineseVoiceId: '', englishVoiceId: '', rate: 0.5 };
   try {
-    const saved = JSON.parse(raw ?? 'null') as Partial<VoicePreferences> | null;
+    const saved = JSON.parse(raw ?? 'null') as (Partial<VoicePreferences> & { voiceId?: unknown }) | null;
     if (!saved || typeof saved !== 'object') return fallback;
+    const recognitionLocale = saved.locale === 'en-US' || saved.locale === 'zh-CN' ? saved.locale : fallback.locale;
+    const voiceId = (value: unknown) => typeof value === 'string' && value.length <= 300 ? value : '';
     return {
-      locale: saved.locale === 'en-US' || saved.locale === 'zh-CN' ? saved.locale : fallback.locale,
-      voiceId: typeof saved.voiceId === 'string' && saved.voiceId.length <= 300 ? saved.voiceId : '',
+      locale: recognitionLocale,
+      readingMode: saved.readingMode === 'zh-CN' || saved.readingMode === 'en-US' ? saved.readingMode : 'auto',
+      chineseVoiceId: voiceId(saved.chineseVoiceId ?? (recognitionLocale === 'zh-CN' ? saved.voiceId : '')),
+      englishVoiceId: voiceId(saved.englishVoiceId ?? (recognitionLocale === 'en-US' ? saved.voiceId : '')),
       rate: typeof saved.rate === 'number' && Number.isFinite(saved.rate)
         ? [0.35, 0.45, 0.5, 0.55, 0.65].reduce((closest, candidate) => Math.abs(candidate - saved.rate!) < Math.abs(closest - saved.rate!) ? candidate : closest, 0.5)
         : 0.5,
@@ -19,6 +24,7 @@ export function readVoicePreferences(locale: string, raw?: string | null): Voice
 interface Options {
   locale: string;
   enabled: boolean;
+  speechSources?: SpeechSource[];
   toggleRequest?: { nonce: number };
   onActiveChange?: (active: boolean) => void;
   ready: () => string | undefined;
@@ -40,6 +46,7 @@ export function useVoiceConversation(options: Options) {
         voiceStopSpeaking: () => window.folio.voiceStopSpeaking(),
       },
       preferences: readVoicePreferences(options.locale, raw),
+      speechSources: () => latest.current.speechSources ?? [],
       ready: () => latest.current.ready(),
       submit: (text, locale, answer) => latest.current.submit(text, locale, answer),
       cancelAI: () => latest.current.cancelAI(),
@@ -70,7 +77,7 @@ export function useVoiceConversation(options: Options) {
   useEffect(() => {
     if (!options.enabled || !options.toggleRequest || consumedToggle.current === options.toggleRequest.nonce) return;
     consumedToggle.current = options.toggleRequest.nonce;
-    if (controller.getState().active) void controller.end(); else void controller.start();
+    if (controller.getState().active) void controller.end(); else void controller.configure();
   }, [controller, options.enabled, options.toggleRequest?.nonce]);
   return { state, controller };
 }

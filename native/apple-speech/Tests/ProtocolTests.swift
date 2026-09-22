@@ -33,6 +33,21 @@ import Foundation
         }
         let valid = try JSONDecoder().decode(SpeechCommand.self, from: Data("{\"id\":\"x\",\"command\":\"speak\",\"sessionId\":\"s\",\"text\":\"你好\",\"rate\":0.5}".utf8))
         try valid.validate()
-        print("PASS: cumulative revisions, Chinese/English boundaries, range replacement, split UTF-8/CRLF, bounded lines, command validation")
+        func segmented(_ segments: [[String: Any]]) throws -> SpeechCommand {
+            try JSONDecoder().decode(SpeechCommand.self, from: JSONSerialization.data(withJSONObject: ["id": "segments", "command": "speak", "sessionId": "s", "text": segments.compactMap { $0["text"] as? String }.joined(), "segments": segments]))
+        }
+        try segmented([["text": "你好。", "locale": "zh-CN", "pauseAfter": 0.12], ["text": "Main result.", "locale": "en-US", "voiceId": "com.apple.test", "pauseAfter": 0.5]]).validate()
+        for segments in [[], [["text": " ", "locale": "zh-CN"]], [["text": "hello", "locale": ""]], [["text": "hello", "locale": "en US"]], [["text": "hello", "locale": "en-US", "voiceId": ""]], [["text": "hello", "locale": "en-US", "pauseAfter": -0.01]], [["text": "hello", "locale": "en-US", "pauseAfter": 0.51]], Array(repeating: ["text": "a", "locale": "en-US"], count: 257), [["text": String(repeating: "文", count: 43_691), "locale": "zh-CN"]]] {
+            do { try segmented(segments).validate(); preconditionFailure("Invalid speech segments accepted") }
+            catch let error as SpeechFailure { precondition(error.code == "invalid-request") }
+        }
+        try segmented(Array(repeating: ["text": "a", "locale": "en-US"], count: 256)).validate()
+        try segmented([["text": String(repeating: "a", count: 131_072), "locale": "en-US"]]).validate()
+        for segment in [["text": "a\0b", "locale": "en-US"], ["text": "a", "locale": "英-CN"], ["text": "a", "locale": "en--US"]] {
+            do { try segmented([segment]).validate(); preconditionFailure("Unsafe segment accepted") } catch is SpeechFailure { }
+        }
+        var mismatch = try segmented([["text": "hello", "locale": "en-US"]]); mismatch.text = "different"
+        do { try mismatch.validate(); preconditionFailure("Mismatched text accepted") } catch is SpeechFailure { }
+        print("PASS: cumulative revisions, Unicode framing, bounded lines, legacy commands, segment count/UTF-8/locale/pause limits")
     }
 }

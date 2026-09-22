@@ -2,10 +2,11 @@ import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams, type SpawnOpti
 import { randomUUID } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import path from 'node:path';
-import type { VoiceCapabilities, VoiceErrorCode, VoiceEvent, VoiceListenOptions, VoiceService, VoiceSpeakOptions } from '../shared/voice';
+import type { VoiceCapabilities, VoiceErrorCode, VoiceEvent, VoiceListenOptions, VoiceService, VoiceSpeakOptions, VoiceSpeakSegment, VoiceQuality } from '../shared/voice';
 
 export const MAX_VOICE_TEXT_BYTES = 128 * 1024;
 export const MAX_VOICE_LINE_BYTES = 256 * 1024;
+const MAX_VOICE_COMMAND_BYTES = 512 * 1024;
 const ERROR_CODES = new Set<VoiceErrorCode>([
   'invalid-request', 'busy', 'unsupported', 'unsupported-locale', 'on-device-unavailable', 'recognizer-unavailable', 'needs-model-download', 'model-download-failed',
   'microphone-denied', 'speech-permission-denied', 'audio-unavailable', 'recognition-failed', 'voice-unavailable',
@@ -97,7 +98,9 @@ function capabilitiesResult(value: unknown): VoiceCapabilities {
       const voice = item as Record<string, unknown>;
       if (typeof voice.id !== 'string' || !VOICE_ID.test(voice.id) || typeof voice.name !== 'string' || !voice.name.trim()
         || voice.name.length > 160 || /[\u0000-\u001f\u007f]/.test(voice.name)) throw new VoiceServiceError('protocol-error');
-      return { id: voice.id, name: voice.name, language: locale(voice.language, true) };
+      if (voice.quality !== undefined && !['default', 'enhanced', 'premium'].includes(String(voice.quality))) throw new VoiceServiceError('protocol-error');
+      return { id: voice.id, name: voice.name, language: locale(voice.language, true),
+        ...(voice.quality === undefined ? {} : { quality: voice.quality as VoiceQuality }) };
     });
     return { available: data.available, engine: data.engine as VoiceCapabilities['engine'], locales, voices,
       ...(data.reason === undefined || data.reason === '' ? {} : { reason: errorCode(data.reason, 'unsupported') }),
@@ -252,7 +255,7 @@ export function createVoiceService(host: VoiceHost): VoiceService {
     if (record.closing || record.closed) return Promise.reject(new VoiceServiceError('helper-exited'));
     if (record.pending.size >= 16) return Promise.reject(new VoiceServiceError('busy'));
     const id = randomUUID(), payload = `${JSON.stringify({ id, command: type, ...fields })}\n`;
-    if (Buffer.byteLength(payload, 'utf8') > MAX_VOICE_LINE_BYTES) return Promise.reject(new VoiceServiceError('invalid-request'));
+    if (Buffer.byteLength(payload, 'utf8') > MAX_VOICE_COMMAND_BYTES) return Promise.reject(new VoiceServiceError('invalid-request'));
     clearTimeout(record.idleTimer); record.idleTimer = undefined;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { void retire(record, 'timeout'); }, commandTimeout);
@@ -357,8 +360,26 @@ export function createVoiceService(host: VoiceHost): VoiceService {
         if (!options || typeof options !== 'object' || typeof options.text !== 'string' || !options.text.trim() || options.text.includes('\0')
           || Buffer.byteLength(options.text, 'utf8') > MAX_VOICE_TEXT_BYTES || (options.voiceId !== undefined && (typeof options.voiceId !== 'string' || !VOICE_ID.test(options.voiceId)))
           || (options.rate !== undefined && (typeof options.rate !== 'number' || !Number.isFinite(options.rate) || options.rate < 0.1 || options.rate > 1))) throw new VoiceServiceError('invalid-request');
+        let segments: VoiceSpeakSegment[] | undefined;
+        if (options.segments !== undefined) {
+          if (!Array.isArray(options.segments) || !options.segments.length || options.segments.length > 256) throw new VoiceServiceError('invalid-request');
+          let bytes = 0;
+          segments = options.segments.map(segment => {
+            if (!segment || typeof segment !== 'object' || Array.isArray(segment)
+              || typeof segment.text !== 'string' || !segment.text.trim() || segment.text.includes('\0')
+              || (segment.voiceId !== undefined && (typeof segment.voiceId !== 'string' || !VOICE_ID.test(segment.voiceId)))
+              || (segment.pauseAfter !== undefined && (typeof segment.pauseAfter !== 'number' || !Number.isFinite(segment.pauseAfter) || segment.pauseAfter < 0 || segment.pauseAfter > 0.5))) throw new VoiceServiceError('invalid-request');
+            bytes += Buffer.byteLength(segment.text, 'utf8');
+            if (bytes > MAX_VOICE_TEXT_BYTES) throw new VoiceServiceError('invalid-request');
+            return { text: segment.text, locale: locale(segment.locale),
+              ...(segment.voiceId === undefined ? {} : { voiceId: segment.voiceId }),
+              ...(segment.pauseAfter === undefined ? {} : { pauseAfter: segment.pauseAfter }) };
+          });
+          if (segments.map(segment => segment.text).join('') !== options.text) throw new VoiceServiceError('invalid-request');
+        }
         return start('speak', { sessionId: sessionId(options.sessionId), text: options.text, locale: locale(options.locale),
-          ...(options.voiceId === undefined ? {} : { voiceId: options.voiceId }), ...(options.rate === undefined ? {} : { rate: options.rate }) });
+          ...(options.voiceId === undefined ? {} : { voiceId: options.voiceId }), ...(options.rate === undefined ? {} : { rate: options.rate }),
+          ...(segments === undefined ? {} : { segments }) });
       } catch { return Promise.reject(new VoiceServiceError('invalid-request')); }
     },
     async stopSpeaking() { if (active?.mode === 'speak') await stop(active); },

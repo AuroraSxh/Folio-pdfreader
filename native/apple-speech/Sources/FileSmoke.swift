@@ -15,11 +15,50 @@ import CoreMedia
         installation?.cancel(); synth.stopSpeaking(at: .immediate)
         if #available(macOS 26.0, *), let analyzer = analyzerBox?.value { Task { await analyzer.cancelAndFinishNow() } }
     }
+    func runMixed() async throws -> [String: Any] {
+        let voices = AppleSpeechVoices.installed()
+        let segments = [SpeechSegment(text: "这篇论文中的 ", locale: "zh-CN", pauseAfter: 0),
+                        SpeechSegment(text: "macrophage", locale: "en-US", pauseAfter: 0),
+                        SpeechSegment(text: " 通过 ", locale: "zh-CN", pauseAfter: 0),
+                        SpeechSegment(text: "RNA sequencing", locale: "en-US", pauseAfter: 0),
+                        SpeechSegment(text: " 进行分析。另一个例子是 ", locale: "zh-CN", pauseAfter: 0),
+                        SpeechSegment(text: "CD 4 positive", locale: "en-US", pauseAfter: 0),
+                        SpeechSegment(text: " 细胞，以及基因型 ", locale: "zh-CN", pauseAfter: 0),
+                        SpeechSegment(text: "flox flox", locale: "en-US", pauseAfter: 0),
+                        SpeechSegment(text: " 小鼠。", locale: "zh-CN", pauseAfter: 0)]
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("folio-speech-mixed-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var jobs: [(file: URL, segment: SpeechSegment, voice: SpeechVoice, task: Task<Void, Error>)] = []
+        for (index, segment) in segments.enumerated() {
+            let selected = try AppleSpeechVoices.select(voices, locale: segment.locale, voiceId: segment.voiceId)
+            guard let voice = AVSpeechSynthesisVoice(identifier: selected.id) else { throw AppleSpeechVoices.unavailable() }
+            let file = folder.appendingPathComponent("segment-\(index).caf"), writer: AudioFileWriter
+            writer = AudioFileWriter(url: file)
+            let utterance = AVSpeechUtterance(string: segment.text); utterance.voice = voice
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate; utterance.postUtteranceDelay = segment.pauseAfter ?? 0
+            let task = Task { @MainActor in
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    writer.completion = continuation; synth.write(utterance) { writer.receive($0) }
+                }
+            }
+            jobs.append((file, segment, selected, task))
+        }
+        var results: [[String: Any]] = []
+        for job in jobs {
+            try await job.task.value
+            let size = try FileManager.default.attributesOfItem(atPath: job.file.path)[.size] as? NSNumber
+            guard (size?.intValue ?? 0) > 1000 else { throw SpeechFailure("synthesis-failed", "Mixed-language synthesis produced no usable audio.") }
+            results.append(["text": job.segment.text, "locale": job.segment.locale, "voiceId": job.voice.id, "quality": job.voice.quality, "audioBytes": size ?? 0])
+        }
+        return ["status": "passed", "test": "mixed-language-file-synthesis", "segments": results, "microphoneUsed": false, "speakerUsed": false, "modelDownload": false]
+    }
     func run(locale identifier: String, allowDownload: Bool) async throws -> [String: Any] {
         guard #available(macOS 26.0, *), SpeechTranscriber.isAvailable else { return ["status": "skipped", "reason": "speech-analyzer-unavailable"] }
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier)) else { return ["status": "skipped", "reason": "unsupported-locale"] }
         let text = identifier.hasPrefix("zh") ? "这篇论文的主要结论是什么。" : "What is the main conclusion of this paper?"
-        guard let voice = AVSpeechSynthesisVoice(language: identifier), voice.identifier.hasPrefix("com.apple.") else { throw SpeechFailure("voice-unavailable", "No installed Apple voice for this test language.") }
+        let selected = try AppleSpeechVoices.select(AppleSpeechVoices.installed(), locale: identifier, voiceId: nil)
+        guard let voice = AVSpeechSynthesisVoice(identifier: selected.id) else { throw AppleSpeechVoices.unavailable() }
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("folio-speech-smoke-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -91,7 +130,10 @@ enum NativeSmokeTool {
         let smoke = FileSmoke(), start = Date()
         let task = Task { @MainActor in
             do {
-                var result = try await smoke.run(locale: locale, allowDownload: args.contains("--allow-model-download")); result["elapsedSeconds"] = Date().timeIntervalSince(start)
+                var result: [String: Any]
+                if args.contains("--mixed") { result = try await smoke.runMixed() }
+                else { result = try await smoke.run(locale: locale, allowDownload: args.contains("--allow-model-download")) }
+                result["elapsedSeconds"] = Date().timeIntervalSince(start)
                 print(String(data: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]), encoding: .utf8)!); exit(result["status"] as? String == "text-mismatch" ? 1 : 0)
             } catch {
                 let failure = error as? SpeechFailure

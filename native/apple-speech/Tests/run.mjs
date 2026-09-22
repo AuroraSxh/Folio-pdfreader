@@ -14,7 +14,7 @@ try {
   const base = path.join(root, 'native/apple-speech');
   const sources = (await readdir(path.join(base, 'Sources'))).filter(name => name.endsWith('.swift')).map(name => path.join(base, 'Sources', name));
   const architecture = process.arch === 'arm64' ? 'arm64' : 'x86_64';
-  for (const test of ['ProtocolTests', 'LifecycleTests']) {
+  for (const test of ['ProtocolTests', 'LifecycleTests', 'SynthesisTests']) {
     const executable = path.join(temporary, test);
     const args = test === 'ProtocolTests' ? [path.join(base, 'Sources/Protocol.swift')] : ['-D', 'FOLIO_SPEECH_TESTS', '-framework', 'AppKit', '-framework', 'AVFoundation', '-framework', 'Speech', ...sources];
     await run('xcrun', ['swiftc', '-parse-as-library', '-swift-version', '5', '-target', `${architecture}-apple-macos13.0`, ...args, path.join(base, 'Tests', `${test}.swift`), '-o', executable]);
@@ -33,7 +33,9 @@ try {
       const response = await send('capabilities', { locale }); assert.equal(response.ok, true); const caps = response.result;
       assert.ok(['speech-analyzer', 'speech-recognizer', 'unsupported'].includes(caps.engine)); assert.ok(Array.isArray(caps.locales)); assert.ok(Array.isArray(caps.voices));
       assert.ok(caps.voices.every(voice => voice.id.startsWith('com.apple.') && !voice.language.includes('_'))); assert.ok(caps.locales.every(locale => !locale.includes('_')));
-      console.log(JSON.stringify({ test: 'readonly-capabilities', locale, available: caps.available, engine: caps.engine, needsModelDownload: caps.needsModelDownload, voices: caps.voices.length }));
+      assert.ok(caps.voices.every(voice => ['default', 'enhanced', 'premium'].includes(voice.quality)));
+      const qualities = caps.voices.reduce((counts, voice) => { counts[voice.quality] = (counts[voice.quality] ?? 0) + 1; return counts; }, {});
+      console.log(JSON.stringify({ test: 'readonly-capabilities', locale, available: caps.available, engine: caps.engine, needsModelDownload: caps.needsModelDownload, voices: caps.voices.length, qualities }));
     }
     assert.equal((await send('listen')).code, 'invalid-request');
     assert.equal((await send('speak', { sessionId: 'no-audio', text: '' })).code, 'invalid-request');

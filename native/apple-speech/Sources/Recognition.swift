@@ -16,7 +16,7 @@ func languageTag(_ locale: Locale) -> String { locale.identifier.replacingOccurr
 
 @MainActor func capabilities(locale identifier: String?) async -> [String: Any] {
     let wanted = Locale(identifier: identifier ?? Locale.current.identifier)
-    let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.identifier.hasPrefix("com.apple.") }.map { ["id": $0.identifier, "name": $0.name, "language": $0.language.replacingOccurrences(of: "_", with: "-")] }
+    let voices = AppleSpeechVoices.installed().map(\.json)
     if #available(macOS 26.0, *), SpeechTranscriber.isAvailable {
         let locales = await SpeechTranscriber.supportedLocales
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) else {

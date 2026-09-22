@@ -1,7 +1,8 @@
 # Performance measurement
 
-Published summaries describe specific historical Mac builds, not the performance of every release or platform:
+These summaries describe specific Mac builds, not the performance of every release or platform:
 
+- [v0.4.1 reading layout and native speech checks](../docs/performance-v0.4.1.md)
 - [v0.4.0 reading layout and native speech checks](../docs/performance-v0.4.0.md)
 - [v0.2.1 floating assistant and drag measurement](../docs/performance-v0.2.1.md)
 - [v0.2.0 reading-layout measurement](../docs/performance-v0.2.0.md)

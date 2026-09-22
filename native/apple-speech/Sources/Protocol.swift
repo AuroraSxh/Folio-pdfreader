@@ -1,5 +1,21 @@
 import Foundation
 
+struct SpeechSegment: Decodable {
+    let text: String
+    let locale: String
+    var voiceId: String?
+    var pauseAfter: Double?
+    func validate() throws {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !text.contains("\0"), locale.utf8.count <= 64,
+              locale.range(of: "^[A-Za-z]{2,8}([-_][A-Za-z0-9]{1,8})*$", options: .regularExpression) != nil else {
+            throw SpeechFailure("invalid-request", "Speech segments need text and a valid locale.")
+        }
+        if let voiceId, voiceId.isEmpty || voiceId.utf8.count > 256 || voiceId.contains("\0") { throw SpeechFailure("invalid-request", "Invalid segment voice id.") }
+        if let pauseAfter, !pauseAfter.isFinite || !(0...0.5).contains(pauseAfter) { throw SpeechFailure("invalid-request", "Speech pauses must be between 0 and 0.5 seconds.") }
+    }
+}
+
 struct SpeechCommand: Decodable {
     let id: String
     let command: String
@@ -9,6 +25,7 @@ struct SpeechCommand: Decodable {
     var voiceId: String?
     var rate: Double?
     var allowModelDownload: Bool?
+    var segments: [SpeechSegment]?
 
     func validate() throws {
         guard !id.isEmpty, id.utf8.count <= 128 else { throw SpeechFailure("invalid-request", "A short request id is required.") }
@@ -17,9 +34,16 @@ struct SpeechCommand: Decodable {
         if let sessionId, sessionId.isEmpty || sessionId.utf8.count > 128 { throw SpeechFailure("invalid-request", "Invalid session id.") }
         if command == "listen" || command == "speak", sessionId == nil { throw SpeechFailure("invalid-request", "A session id is required.") }
         if command == "speak" {
-            guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 200_000 else { throw SpeechFailure("invalid-request", "Speech text must contain 1 to 200,000 UTF-8 bytes.") }
+            guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !text.contains("\0"), text.utf8.count <= 200_000 else { throw SpeechFailure("invalid-request", "Speech text must contain 1 to 200,000 UTF-8 bytes without NUL characters.") }
             if let rate, !rate.isFinite || !(0.1...1).contains(rate) { throw SpeechFailure("invalid-request", "Speech rate must be between 0.1 and 1.0.") }
             if let voiceId, voiceId.utf8.count > 256 { throw SpeechFailure("invalid-request", "Invalid voice id.") }
+            if let segments {
+                guard !segments.isEmpty, segments.count <= 256, segments.map(\.text).joined() == text,
+                      segments.reduce(0, { $0 + $1.text.utf8.count }) <= 131_072 else {
+                    throw SpeechFailure("invalid-request", "Use 1 to 256 speech segments and at most 128 KiB of segment text.")
+                }
+                try segments.forEach { try $0.validate() }
+            }
         }
     }
 }

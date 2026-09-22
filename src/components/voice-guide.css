@@ -1,0 +1,8 @@
+.fl-voice-guide{margin-top:12px;border-top:1px solid #dce2d8;padding-top:10px;color:inherit;font-size:12px;line-height:1.65}
+.fl-voice-guide summary{cursor:pointer;font-weight:600;padding:3px 0}
+.fl-voice-guide summary:focus-visible{outline:2px solid #a5b795;outline-offset:3px;border-radius:4px}
+.fl-voice-guide h4{font-size:12px;margin:14px 0 5px}
+.fl-voice-guide p,.fl-voice-options .fl-voice-guide p{font-size:12px;line-height:1.65;margin:6px 0;color:inherit}
+.fl-voice-guide ol{padding-left:21px;margin:6px 0}
+.fl-voice-guide li{margin:6px 0;padding-left:2px}
+[data-theme=dark] .fl-voice-guide{border-color:#46503f}

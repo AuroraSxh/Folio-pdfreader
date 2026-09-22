@@ -3,7 +3,7 @@ import AppKit
 @preconcurrency import Speech
 import Foundation
 
-@MainActor final class SpeechController: NSObject, AVSpeechSynthesizerDelegate {
+@MainActor final class SpeechController: NSObject {
     final class Listening {
         let id: String
         var backend: (any Recognizing)?
@@ -12,16 +12,25 @@ import Foundation
         var text = ""
         init(id: String) { self.id = id }
     }
+    final class Speaking {
+        let id: String
+        let driver: any SpeechSynthesizing
+        let count: Int
+        var started = false
+        var finished: Set<Int> = []
+        init(id: String, driver: any SpeechSynthesizing, count: Int) { self.id = id; self.driver = driver; self.count = count }
+    }
     typealias RecognizerFactory = (Locale, @escaping (String, Bool) -> Void, @escaping (SpeechFailure) -> Void) throws -> any Recognizing
     private let output: (([String: Any]) -> Void)?
     private let recognizerFactory: RecognizerFactory?
-    override init() { output = nil; recognizerFactory = nil; super.init() }
-    init(output: @escaping ([String: Any]) -> Void, recognizerFactory: @escaping RecognizerFactory) {
-        self.output = output; self.recognizerFactory = recognizerFactory; super.init()
+    private let synthesizerFactory: () -> any SpeechSynthesizing
+    private let voiceProvider: () -> [SpeechVoice]
+    override init() { output = nil; recognizerFactory = nil; synthesizerFactory = { AppleSpeechSynthesizer() }; voiceProvider = AppleSpeechVoices.installed; super.init() }
+    init(output: @escaping ([String: Any]) -> Void, recognizerFactory: RecognizerFactory? = nil, synthesizerFactory: (() -> any SpeechSynthesizing)? = nil, voiceProvider: @escaping () -> [SpeechVoice] = AppleSpeechVoices.installed) {
+        self.output = output; self.recognizerFactory = recognizerFactory; self.synthesizerFactory = synthesizerFactory ?? { AppleSpeechSynthesizer() }; self.voiceProvider = voiceProvider; super.init()
     }
     private var listening: Listening?
-    private var speaking: (id: String, utterance: AVSpeechUtterance)?
-    private var synthesizer: AVSpeechSynthesizer?
+    private var speaking: Speaking?
     private var shuttingDown = false
 
     private func write(_ value: [String: Any]) {
@@ -121,43 +130,40 @@ import Foundation
     }
     private func speak(_ command: SpeechCommand) throws {
         guard speaking == nil, listening == nil else { throw SpeechFailure("busy", "Stop the current speech or listening session first.") }
-        let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.identifier.hasPrefix("com.apple.") }
-        let voice: AVSpeechSynthesisVoice?
-        if let id = command.voiceId { voice = voices.first { $0.identifier == id } }
-        else {
-            let wanted = (command.locale ?? Locale.current.identifier).replacingOccurrences(of: "_", with: "-")
-            let selected = AVSpeechSynthesisVoice(language: wanted)
-            voice = selected.flatMap { selected in voices.first { $0.identifier == selected.identifier } }
-                ?? voices.first { $0.language.caseInsensitiveCompare(wanted) == .orderedSame }
-                ?? voices.first { $0.language.split(separator: "-").first == wanted.split(separator: "-").first }
+        let voices = voiceProvider()
+        let segments = command.segments ?? [SpeechSegment(text: command.text!, locale: command.locale ?? Locale.current.identifier, voiceId: command.voiceId)]
+        let plans = try segments.map { segment in
+            let voice = try AppleSpeechVoices.select(voices, locale: segment.locale, voiceId: segment.voiceId)
+            return SpeechUtterancePlan(text: segment.text, voiceId: voice.id, rate: command.rate.map(Float.init) ?? AVSpeechUtteranceDefaultSpeechRate, pauseAfter: segment.pauseAfter ?? 0)
         }
-        guard let voice else { throw SpeechFailure("voice-unavailable", "No installed Apple system voice matches this language or voice id.") }
-        if synthesizer == nil { let value = AVSpeechSynthesizer(); value.delegate = self; synthesizer = value }
-        let utterance = AVSpeechUtterance(string: command.text!); utterance.voice = voice
-        utterance.rate = command.rate.map(Float.init) ?? AVSpeechUtteranceDefaultSpeechRate
-        speaking = (command.sessionId!, utterance)
-        reply(command.id, ["accepted": true, "sessionId": command.sessionId!])
-        synthesizer!.speak(utterance)
+        let session = Speaking(id: command.sessionId!, driver: synthesizerFactory(), count: plans.count)
+        speaking = session
+        do {
+            try session.driver.start(plans) { [weak self, weak session] event, index in
+                guard let self, let session, self.speaking === session, (0..<session.count).contains(index) else { return }
+                switch event {
+                case .start:
+                    if !session.started { session.started = true; self.event(session.id, "speech-start") }
+                case .finish:
+                    session.finished.insert(index)
+                    if session.finished.count == session.count { self.speaking = nil; self.event(session.id, "speech-end") }
+                case .cancel:
+                    self.speaking = nil; session.driver.stop(); self.event(session.id, "speech-end", code: "cancelled")
+                }
+            }
+        } catch { speaking = nil; session.driver.stop(); throw error }
+        reply(command.id, ["accepted": true, "sessionId": session.id])
     }
     private func stopSpeaking(sessionId: String?) throws {
         guard let current = speaking else { return }
         if let sessionId, current.id != sessionId { throw SpeechFailure("stale-session", "The speaking session has already changed.") }
-        speaking = nil; synthesizer?.stopSpeaking(at: .immediate)
+        speaking = nil; current.driver.stop()
         event(current.id, "speech-end", code: "cancelled")
-    }
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
-        Task { @MainActor in if let current = self.speaking, current.utterance === utterance { self.event(current.id, "speech-start") } }
-    }
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in if let current = self.speaking, current.utterance === utterance { self.speaking = nil; self.event(current.id, "speech-end") } }
-    }
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        Task { @MainActor in if let current = self.speaking, current.utterance === utterance { self.speaking = nil; self.event(current.id, "speech-end", code: "cancelled") } }
     }
     func shutdown(id: String? = nil) {
         guard !shuttingDown else { return }; shuttingDown = true
         let session = listening; listening = nil; session?.startup?.cancel(); session?.backend?.stopCapture()
-        speaking = nil; synthesizer?.stopSpeaking(at: .immediate)
+        let playback = speaking; speaking = nil; playback?.driver.stop()
         if let id { reply(id) }
         exit(0)
     }
