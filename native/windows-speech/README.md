@@ -34,6 +34,12 @@ Listening requires an explicit `listen` command. A session accumulates finalized
 
 Only one listening or speaking session can exist. Synthesis uses one `SpeechSynthesizer` and one `PromptBuilder`, with safe voice/text sections for the mixed-language segments. It emits one `speech-start` and one `speech-end`. Cancellation clears playback and makes late callbacks inert. EOF and shutdown dispose any device resources. The normal supervisor exits an idle helper after two seconds; the standalone helper also exits after 30 seconds idle. There are no continuous audio meters, polling recognition loops, persisted recordings, transcripts, or telemetry.
 
+The renderer's voice preview adapts its sample to installed languages: automatic mode uses a Chinese-only or English-only sample when just that language is available, and fixed-language modes use the matching sample. This changes only the disposable preview text, not saved voice selections or normal answer reading preferences. An explicitly selected unavailable voice still reports its error.
+
+## Pairleaf 0.5.0 checks
+
+Passed: 168 JavaScript/TypeScript unit tests, 15 C# protocol tests using simulated audio, 6 simulated Windows renderer checks, and 7 static Windows package checks. The C# protocol suite runs under .NET 10 with fake audio devices; it does not execute Windows `System.Speech`. No Windows runtime, microphone, or speaker check has been completed. Cross-build and simulation results do not establish native engine availability, device release, or Windows CPU/GPU performance.
+
 ## Real Windows smoke test
 
 Default invocation is silent and does not access the microphone:

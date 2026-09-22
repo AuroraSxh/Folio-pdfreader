@@ -20,7 +20,7 @@ Pairleaf 使用 .NET Framework 4.8 的 System.Speech / SAPI，在本机识别与
 
 1. 打开文章，点击工具栏的「语音」。**默认关闭，点击此按钮只打开选项，不收音；重启也不恢复语音。**
 2. 选择识别语言，并分别选择中文、英文音色和语速。识别语言也决定 AI 回答的语言；一次识别会话使用一种语言，不保证自动识别中英混合提问。
-3. 点击「试听音色」。试听不需要 AI Key、不使用麦克风、不写聊天记录，结束后保持暂停。即使识别引擎不可用，只要有可用音色仍可试听。
+3. 点击「试听音色」。试听不需要 AI Key、不使用麦克风、不写聊天记录，结束后保持暂停。即使识别引擎不可用，只要有可用音色仍可试听。自动模式下，若本机只有中文或英文音色，就使用对应的单语示例；固定语言模式使用对应示例，不会修改已保存的音色偏好。
 4. 本地识别可用、AI Key 已设置后，点击「开始聆听」。说完稍作停顿即可发送问题。回答朗读时麦克风暂停；可打断继续讲话，也可暂停或结束。
 
 收起 AI 面板后仍可对话，转写和回答保存在相同的聊天记录中。切换论文、锁屏或退出会结束语音，音色偏好单独保存。误录内容可在提问或回答下删除整轮问答，同时清除关联的自动记忆和摘要；个人笔记保留。
@@ -52,7 +52,7 @@ The installed app uses .NET Framework 4.8 or compatible 4.8.1, included with rec
 
 1. Open a paper and select **Voice**. **Voice is off by default; opening options does not use the microphone, and restarting never resumes a session.**
 2. Select the recognition language, Chinese and English voices, and speed. Recognition language also controls AI reply language. Each recognition session uses one language; automatic bilingual recognition is not promised.
-3. Select **Preview voices**. Preview needs no AI key, microphone, or chat entry, and finishes paused. Installed voices can be previewed even when recognition is unavailable.
+3. Select **Preview voices**. Preview needs no AI key, microphone, or chat entry, and finishes paused. Installed voices can be previewed even when recognition is unavailable. In automatic mode, Chinese-only or English-only systems use a matching sample; fixed-language modes use the corresponding sample. Saved voice preferences remain unchanged.
 4. With a working local recognizer and your AI key configured, select **Start listening**. Pause briefly to send a question. The microphone pauses during spoken replies; interrupt to speak again, pause, or end.
 
 Hiding the AI panel keeps the session available. Reopening it shows the same transcript and answer. Switching papers, locking the screen, or quitting ends the session; voice preferences are saved separately. Delete below a question or answer removes the exchange and linked automatic memories and summaries; personal notes are kept.
@@ -72,4 +72,8 @@ No real Windows device testing has been completed. Installation, microphone capt
 
 ## Development
 
-The native helper targets .NET Framework 4.8; the .NET 10 SDK is used for development and protocol tests, not bundled in the app. See the [helper README](../native/windows-speech/README.md) for build and explicit device-test commands. Pairleaf 0.5.0 verification results are pending; older Folio release counts do not validate this Windows feature.
+The native helper targets .NET Framework 4.8; the .NET 10 SDK is used for development and protocol tests, not bundled in the app. See the [helper README](../native/windows-speech/README.md) for build and explicit device-test commands.
+
+Pairleaf 0.5.0 passed 168 JavaScript/TypeScript unit tests, 15 C# protocol tests with simulated audio, 6 simulated Windows renderer checks, and 7 static package checks. These do not run the native Windows speech engine or validate microphone capture or playback.
+
+0.5.0 已通过 168 项 JavaScript/TypeScript 单元测试、15 项模拟音频的 C# 协议测试、6 项模拟 Windows 渲染界面检查及 7 项安装包静态检查。这些结果不代表运行过真实 Windows 语音引擎，也不代表麦克风或扬声器验证通过。

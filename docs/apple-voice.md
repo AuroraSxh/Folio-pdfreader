@@ -14,7 +14,7 @@ For Pairleaf 0.5.0 on Mac, previously called Folio. Apple recognition and system
 
 1. 打开一篇论文，点击工具栏的「语音」。这一步只打开选项，麦克风仍关闭。
 2. 选择「识别语言」，再分别选择「中文音色」「英文音色」和朗读速度。识别语言也决定 AI 回答的语言，朗读音色可单独设置。
-3. 点击「试听音色」比较同一段中英混合示例。试听不需要 API Key、不调用 AI、不收音，也不写入聊天记录；播完后保持暂停。
+3. 点击「试听音色」。自动模式默认使用中英混合示例；本机只有中文或英文音色时，改用对应的单语示例，固定语言模式也使用对应示例。试听不需要 API Key、不调用 AI、不收音，也不写入聊天记录；播完后保持暂停。
 4. 准备提问时，点击「开始聆听」。首次使用按系统提示允许麦克风访问；若缺少识别模型，需明确点击「下载模型并开始」。AI Key 在现有 AI 设置中填写。
 5. 说完稍作停顿，问题会发送到当前论文对话。朗读回答时麦克风暂停；点击「打断并讲话」可继续提问，「暂停」或「结束」可停止。
 
@@ -60,7 +60,7 @@ Pairleaf 不保存原始录音。Apple 识别使用本地处理；问题转写�
 
 1. Open a paper and select **Voice** in the toolbar. This opens the options; the microphone stays off.
 2. Choose the recognition language, then your Chinese and English voices and reading speed. Recognition language also determines the language of AI replies; reading voices are independent.
-3. Select **Preview voices** to hear a fixed mixed-language sample. It needs no API key, AI request, microphone, or chat entry. Playback finishes in the paused state.
+3. Select **Preview voices**. Automatic mode uses a mixed-language sample, or a Chinese/English sample when only that language's voices are installed. Fixed-language modes use the corresponding sample. Preview needs no API key, AI request, microphone, or chat entry. Playback finishes in the paused state.
 4. Select **Start listening** when ready. Allow microphone access if prompted. If a recognition model is missing, use **Download model and start** explicitly. Add your provider key in the existing AI settings for conversation.
 5. Pause briefly after speaking to send your question to the paper's conversation. The microphone pauses while the answer is read aloud. Use **Interrupt and speak**, pause, or end as needed.
 
@@ -113,9 +113,13 @@ Apple references: [SpeechAnalyzer](https://developer.apple.com/videos/play/wwdc2
 
 ## Pairleaf 0.5.0 validation / 本版验证
 
-Release validation is pending. The results below belong to earlier Folio versions, not Pairleaf 0.5.0. Windows speech has no real-device validation; see its [guide](windows-voice.md).
+Pairleaf 0.5.0 passed 168 JavaScript/TypeScript unit tests and 45 Mac packaged-app UI checks: 13 voice, 6 chat deletion, 20 reading, and 6 language/update checks. Real Mac IPC returned 185 installed voices, including 5 Premium voices. Helper lifecycle checks found no helper at startup, one during a capability query, and none after idle exit. These checks did not use a microphone, speaker playback, or live AI, and do not assess subjective voice quality. Intel Mac and older macOS runtime testing remain outstanding.
 
-0.5.0 发布验证尚待完成。以下为旧版 Folio 的历史结果，不能算作本版验证；Windows 语音尚无实机结果，见[独立说明](windows-voice.md)。
+Pairleaf 0.5.0 已通过 168 项 JavaScript/TypeScript 单元测试，以及 Mac 打包版 45 项界面检查：语音 13、问答删除 6、阅读 20、双语及更新 6。真实 Mac IPC 返回 185 个音色，其中 5 个为高级音色；语音组件进程检查为启动时 0 个、查询时 1 个、空闲退出后 0 个。这些检查没有使用麦克风、扬声器或真实 AI，不代表听感验证；Intel Mac 与旧版 macOS 仍未实机测试。
+
+Windows checks passed separately: 15 C# protocol tests with simulated audio, 6 simulated Windows renderer checks, and 7 static package checks. No Windows runtime, microphone, or speaker test has been completed. See the [Windows guide](windows-voice.md). The older results below remain historical.
+
+Windows 另通过 15 项模拟音频的 C# 协议测试、6 项模拟 Windows 渲染界面检查及 7 项安装包静态检查；尚未验证真实 Windows 运行、收音或播放，见[独立说明](windows-voice.md)。以下旧版结果保留为历史记录。
 
 ## Folio 0.4.1 release checks / 历史正式包验证
 

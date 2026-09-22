@@ -35,7 +35,9 @@ npm run test:windows-speech
 
 打包检查验证应用 EXE 的 x64 PE32+ 结构、产品/版本/图标资源、ASAR 内容、离线 PDF Worker 与字体资源、Windows 语音组件、安装版和免安装版文件，并在本地输出 `test-results/windows-package-report.json` 与安装包 SHA-256。生成的包与报告不包含在源码仓库中；预编译包见 [GitHub Releases](https://github.com/AuroraSxh/Folio-pdfreader/releases/latest)。
 
-**0.5.0 验证结果尚待发布前填写，目前没有 Windows 实机或虚拟机运行环境。** Mac 上的交叉构建、静态检查、原生协议测试和模拟 Windows 平台的界面测试，都不能算作真实 Windows 运行验证。安装/卸载、启动、文件关联、DPAPI、打印、触控板、高 DPI，以及真实收音、朗读和设备释放仍需 Windows 环境验证。Mac 性能数字也不代表 Windows 的 CPU/GPU 占用，旧版测试数量不代表 0.5.0 通过。
+0.5.0 已通过 168 项 JavaScript/TypeScript 单元测试、15 项模拟音频的 C# 协议测试、6 项模拟 Windows 渲染界面检查，以及 7 项安装包静态检查。Mac 打包版另有 45 项界面检查通过，结果见 [Mac 说明](apple-voice.md#pairleaf-050-validation--本版验证)。
+
+**尚未验证真实 Windows 运行、麦克风或扬声器。** 上述交叉构建、模拟和静态检查不能代替 Windows 实机验证。安装/卸载、启动、文件关联、DPAPI、打印、触控板、高 DPI，以及真实收音、朗读和设备释放仍需 Windows 环境检查。Mac 性能数字也不代表 Windows 的 CPU/GPU 占用。
 
 在 Windows 开发环境中，可以对解包后的真实应用运行完整端到端检查（PowerShell）：
 
