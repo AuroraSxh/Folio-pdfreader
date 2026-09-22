@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { PDFDocumentLoadingTask } from 'pdfjs-dist';
 import type { DocumentIndex, PaperDocument, Workspace } from '../../shared/types';
 import { hasPdfIndex, loadPdf, readSharedPdfIndex } from './documentIndex';
+import { useI18n } from '../i18n';
 
 function visibleDocuments(workspace: Workspace): Set<string> {
   const left = workspace.documents.find(doc => doc.id === workspace.layout.leftId) ?? workspace.documents[0];
@@ -24,8 +25,9 @@ export default function useBackgroundIndex(
   onIndexed: (workspaceId: string, documentId: string, index: DocumentIndex) => Promise<void>,
   onError: (message: string) => void,
 ) {
-  const latest = useRef({ workspace, onIndexed, onError });
-  latest.current = { workspace, onIndexed, onError };
+  const { t } = useI18n();
+  const latest = useRef({ workspace, onIndexed, onError, t });
+  latest.current = { workspace, onIndexed, onError, t };
   const session = useRef<IndexSession | null>(null);
   // Includes completed and failed documents. Visible PdfPane can still retry/unlock failures.
   const attempted = useRef(new Set<string>());
@@ -79,10 +81,10 @@ export default function useBackgroundIndex(
             const failure = error as { name?: string; message?: string };
             if (failure.name === 'PasswordException') {
               attempted.current.add(key);
-              notifyOnce(key, `“${doc.name}”已加密，暂未加入 AI 文章索引。请先在阅读区打开该 PDF 并输入密码。`);
+              notifyOnce(key, latest.current.t('“{name}”已加密，暂未加入 AI 文章索引。请先在阅读区打开该 PDF 并输入密码。', '“{name}” is encrypted and has not been indexed for AI. Open the PDF in a reading pane and enter its password first.', { name: doc.name }));
             } else if (stillHidden() && failure.name !== 'AbortError') {
               attempted.current.add(key);
-              notifyOnce(key, `“${doc.name}”的文章索引未完成：${failure.message || String(error)}。请在阅读区打开此 PDF 重试。`);
+              notifyOnce(key, latest.current.t('“{name}”的文章索引未完成：{error}。请在阅读区打开此 PDF 重试。', 'The text index for “{name}” is incomplete: {error}. Open this PDF in a reading pane to retry.', { name: doc.name, error: failure.message || String(error) }));
             }
           } finally {
             const task = worker.loadingTask;

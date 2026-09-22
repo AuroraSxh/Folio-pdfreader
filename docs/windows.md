@@ -4,8 +4,8 @@
 
 ## 安装与使用
 
-- [v0.2.2 安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.2.2/Folio-0.2.2-windows-x64-setup.exe)：安装向导，可选择安装位置，创建桌面与开始菜单入口。
-- [v0.2.2 免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.2.2/Folio-0.2.2-windows-x64-portable.exe)：程序临时解包运行；论文与设置仍保存在当前 Windows 用户的数据目录，不会自动随 EXE 搬走。
+- [v0.3.0 安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-setup.exe)：安装向导，可选择安装位置，创建桌面与开始菜单入口。
+- [v0.3.0 免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-portable.exe)：程序临时解包运行；论文与设置仍保存在当前 Windows 用户的数据目录，不会自动随 EXE 搬走。
 - 构建未使用 Windows 代码签名证书，因此安装时可能显示未知发布者。这与 Mac 的本机 ad-hoc 签名是两种不同的签名机制。
 
 点击「导入论文」选择一个或多个 PDF。导入整个论文文件夹用「文件 → 导入文章文件夹…」，或直接拖入文件夹。安装版会注册 PDF「打开方式」，支持从资源管理器发送 PDF 给已经运行的 Folio；不会要求用户将 Folio 设为系统默认阅读器。
@@ -33,10 +33,14 @@ npm run test:win-package
 在 Windows 开发环境中，可以对解包后的真实应用运行完整端到端检查（PowerShell）：
 
 ```powershell
-$env:FOLIO_EXECUTABLE = "$PWD\release\v0.2.2\win-unpacked\Folio.exe"
+$env:FOLIO_EXECUTABLE = "$PWD\release\v0.3.0\win-unpacked\Folio.exe"
 $env:FOLIO_E2E_OUTPUT = "test-results/windows-runtime"
 npm run test:e2e
 Remove-Item Env:FOLIO_EXECUTABLE, Env:FOLIO_E2E_OUTPUT
 ```
 
 测试使用隔离的临时文章库和本地模拟 API，不调用付费 AI 服务。安装向导与系统「打开方式」仍需另外进行原生桌面检查。
+
+## 应用内更新
+
+在「设置 → 应用更新」检查 GitHub 新版，也可开启启动时检查。下载完成并通过 SHA-256 校验后，安装版可启动更新安装程序；便携版会显示已下载文件，请先退出旧版，再运行新文件。更新检查不使用 AI API Key。

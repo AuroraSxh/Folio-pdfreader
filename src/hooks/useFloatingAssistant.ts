@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import type { AssistantPosition } from './useReadingLayout';
+import { useI18n } from '../i18n';
 
 interface Options {
   container: RefObject<HTMLDivElement | null>;
@@ -18,6 +19,7 @@ const limit = (value: number, size: number, panelSize: number) => {
 
 /** Only the floating panel moves. Pointer frames never update React or PDF state. */
 export default function useFloatingAssistant({ container, panel, enabled, workspaceId, position, onMove, onResize }: Options) {
+  const {t}=useI18n();
   const stop = useRef<((commit: boolean) => void) | null>(null);
   const place = () => {
     const area = container.current, element = panel.current;
@@ -101,8 +103,8 @@ export default function useFloatingAssistant({ container, panel, enabled, worksp
     window.addEventListener('keydown', escape, true);
   };
   const dragHandleProps: HTMLAttributes<HTMLElement> | undefined = enabled ? {
-    role: 'group', 'aria-label': '移动阅读伙伴', tabIndex: 0,
-    title: '拖动标题栏移动 · 方向键微调 · Home 复位',
+    role: 'group', 'aria-label': t('移动阅读伙伴','Move reading companion'), tabIndex: 0,
+    title: t('拖动标题栏移动 · 方向键微调 · Home 复位','Drag to move · arrow keys to adjust · Home to reset'),
     onPointerDown: event => start(event),
     onKeyDown: event => {
       if (event.target !== event.currentTarget || stop.current) return;

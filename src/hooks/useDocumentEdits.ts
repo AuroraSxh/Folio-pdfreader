@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PaperDocument, Workspace } from '../../shared/types';
+import { useI18n } from '../i18n';
 
 type DocumentPatch = Partial<Pick<PaperDocument, 'name' | 'role' | 'outline' | 'annotations' | 'view'>>;
 type Direction = 'undo' | 'redo';
@@ -10,8 +11,9 @@ export function isTextEditing() {
 }
 
 export default function useDocumentEdits(workspaceId: string | undefined, onWorkspace: (workspace: Workspace) => void, onError: (message: string) => void) {
-  const current = useRef({ workspaceId, onWorkspace, onError });
-  current.current = { workspaceId, onWorkspace, onError };
+  const {t}=useI18n();
+  const current = useRef({ workspaceId, onWorkspace, onError, t });
+  current.current = { workspaceId, onWorkspace, onError, t };
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const pendingRequests = useRef(new Set<Promise<unknown>>());
   const replayCount = useRef(0);
@@ -41,7 +43,7 @@ export default function useDocumentEdits(workspaceId: string | undefined, onWork
   }, []);
   const editDocument = useCallback((id: string, documentId: string, patch: DocumentPatch) => {
     // Reject a snapshot captured before an in-flight Undo/Redo has reached React.
-    if (replayCount.current && (patch.annotations || patch.outline)) return Promise.reject(new Error('正在撤销或重做，请稍后再编辑标记'));
+    if (replayCount.current && (patch.annotations || patch.outline)) return Promise.reject(new Error(current.current.t('正在撤销或重做，请稍后再编辑标记','Undo or redo is in progress. Wait before editing annotations.')));
     return schedule(async () => {
       const workspace = await window.folio.updateDocument(id, documentId, patch);
       current.current.onWorkspace(workspace);

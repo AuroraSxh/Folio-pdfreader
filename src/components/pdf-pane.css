@@ -37,6 +37,9 @@
 .pdf-options form input { width: 62px; height: 26px; border: 1px solid var(--pdf-border); border-radius: 5px; padding-left: 8px; background: #fcfcf8; }
 .pdf-options .pdf-menu-action { display: flex; align-items: center; width: 100%; border: none; background: transparent; border-radius: 6px; color: #627259; gap: 8px; padding: 9px 5px; text-align: left; font-size: 11px; }
 .pdf-options .pdf-menu-action:hover:not(:disabled) { background: #f0f4eb; }
+.pdf-options .pdf-menu-action > svg { flex-shrink: 0; }
+.pdf-pane:lang(en) .pdf-options { width: 280px; max-width: calc(100% - 18px); box-sizing: border-box; }
+.pdf-pane:lang(en) .pdf-options > label { flex-wrap: wrap; }
 .pdf-options-separator { height: 1px; margin: 6px 0; background: var(--pdf-border); }
 .pdf-search-bar { display: flex; align-items: center; gap: 2px; padding: 7px 10px; border-bottom: 1px solid var(--pdf-border); background: #f8faf4; z-index: 4; }
 .pdf-search-input { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; color: #8d9a83; }
@@ -155,6 +158,8 @@
 .pdf-password-dialog > div { display: flex; justify-content: flex-end; gap: 8px; }
 .pdf-status-bar { min-height: 26px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 14px; background: #f9faf6; border-top: 1px solid var(--pdf-border); color: #9ca58f; font-size: 9px; }
 .pdf-status-bar > span { display: flex; align-items: center; white-space: nowrap; }
+.pdf-pane:lang(en) .pdf-status-bar { flex-wrap: wrap; row-gap: 3px; }
+.pdf-pane:lang(en) .pdf-status-bar > span:first-child { min-width: 0; white-space: normal; }
 .pdf-status-bar i { display: inline-block; width: 2px; height: 2px; background: #bfc7b3; border-radius: 50%; margin: 0 8px; }
 @container (max-width: 560px) { .pdf-pane .pdf-sidebar { width: 176px; flex-basis: 176px; } }
 @media (prefers-reduced-motion: reduce) { .pdf-pane * { animation-duration: 0s !important; transition: none !important; } }

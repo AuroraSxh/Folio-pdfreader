@@ -12,15 +12,16 @@ A desktop PDF reader for academic papers. Keep a paper and its supplements in on
 - Copy text, highlight, underline, strike through, and add comments. Undo edits and export annotated PDFs.
 - Ask DeepSeek or another supported AI provider to explain passages and help with reading notes.
 - Export notes to Obsidian or Markdown. Papers, annotations, and notes stay on your computer.
+- Switch between English and Chinese, and check GitHub for updates from the app.
 
 ## Download
 
 [Latest release](https://github.com/AuroraSxh/Folio-pdfreader/releases/latest)
 
-| Platform | v0.2.2 |
+| Platform | v0.3.0 |
 | --- | --- |
-| macOS 13+, Apple Silicon / Intel | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.2.2/Folio-0.2.2-mac-universal.dmg) |
-| Windows 10 / 11, x64 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.2.2/Folio-0.2.2-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.2.2/Folio-0.2.2-windows-x64-portable.exe) |
+| macOS 13+, Apple Silicon / Intel | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-mac-universal.dmg) |
+| Windows 10 / 11, x64 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-portable.exe) |
 
 On Mac, open the DMG and drag Folio into Applications. To update, quit the old version and replace it. Your papers and notes are kept.
 
@@ -38,6 +39,7 @@ npm run dev
 ```bash
 npm run build       # Production build
 npm test            # Unit tests
+npm run test:locale # Language and update UI checks
 npm run dist:dmg    # Universal Mac DMG; build on a Mac
 npm run dist:win    # Windows x64 installer and portable app
 ```

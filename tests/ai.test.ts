@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { once } from 'node:events';
 import test from 'node:test';
 import { createAIService, parseMemories, readSSE, streamCompletion, type AIHost } from '../electron/ai';
-import { buildMemoryContext, buildReadingContext, isDuplicateTitle, sanitizeData } from '../shared/prompts';
+import { buildMemoryContext, buildReadingContext, CHAT_SYSTEM, MEMORY_SYSTEM, getSummaryPrompt, getSystemPrompt, isDuplicateTitle, sanitizeData } from '../shared/prompts';
 import type { ChatEvent, ChatRequest, ProviderConfig, Settings, Workspace } from '../shared/types';
 
 function workspace(): Workspace {
@@ -12,7 +12,7 @@ function workspace(): Workspace {
 }
 function settings(baseURL: string): Settings {
   const make = (id: ProviderConfig['id']): ProviderConfig => ({ id, apiKey: 'test-key', baseURL, model: 'deepseek-flash', maxTokens: 4096, thinking: true, reasoningEffort: 'high' });
-  return { activeProvider: 'deepseek', providers: { deepseek: make('deepseek'), openai: make('openai'), anthropic: make('anthropic'), custom: make('custom') }, libraryPath: '/tmp/library', vaultPath: '', obsidianSubfolder: '', autoSummary: false, autoMemory: false, contextMaxChars: 12000, theme: 'light', readingTheme: 'white', annotationToolbar: 'floating' };
+  return { language:'zh-CN', autoCheckUpdates:true, activeProvider: 'deepseek', providers: { deepseek: make('deepseek'), openai: make('openai'), anthropic: make('anthropic'), custom: make('custom') }, libraryPath: '/tmp/library', vaultPath: '', obsidianSubfolder: '', autoSummary: false, autoMemory: false, contextMaxChars: 12000, theme: 'light', readingTheme: 'white', annotationToolbar: 'floating' };
 }
 async function mock(handler: (body: any, response: ServerResponse, request: IncomingMessage) => void | Promise<void>) {
   const server = createServer(async (request, response) => {
@@ -236,4 +236,69 @@ test('dispose waits for aborted partial-answer persistence before returning to a
   assert.equal(h.state().conversations[0].messages.length, 2);
   assert.match(h.state().conversations[0].messages[1].content, /Save me before quit/); assert.equal(h.state().conversations[0].messages[1].interrupted, true);
   await assert.rejects(() => h.service.start(request('after-dispose')), /已关闭/);
+});
+
+test('bilingual prompts keep Chinese exports and preserve source text and page citations', () => {
+  assert.equal(getSystemPrompt('chat'), CHAT_SYSTEM); assert.equal(getSystemPrompt('memory'), MEMORY_SYSTEM);
+  for (const kind of ['chat', 'selection', 'summary', 'memory', 'index'] as const) {
+    const english = getSystemPrompt(kind, 'en');
+    assert.match(english, /English by default/); assert.match(english, /language.*preference|response.language.*precedence/s);
+  }
+  assert.equal(getSummaryPrompt(), '请生成论文阅读总结。'); assert.match(getSummaryPrompt('en'), /Create structured reading notes/);
+  const ws = workspace(); ws.notes = '既有中文笔记';
+  const result = buildReadingContext(ws, [{ id: 'main', name: '原始论文.pdf', pages: ['中文原始证据' + 'x'.repeat(8000)] }, { id: 'sup', name: '空白补充.pdf', pages: [] }], 1000, undefined, 'en');
+  assert.match(result.content, /\[原始论文.pdf p.1\]\n中文原始证据/);
+  assert.match(result.content, /Page text truncated/); assert.match(result.content, /no readable page text/);
+  assert.match(result.content, /Filename: 空白补充.pdf/); assert.match(buildMemoryContext(ws, [ws]), /既有中文笔记/);
+});
+
+test('English AI summary, memory and index requests preserve existing Chinese data and explicit user language requests', async t => {
+  const bodies: any[] = [];
+  const server = await mock((body, response) => {
+    bodies.push(body);
+    if (bodies.length === 1) answer(response, 'English summary [Main.pdf p.1]');
+    else if (bodies.length === 2) answer(response, JSON.stringify([{ type: 'finding', title: 'New result', body: 'New evidence from the paper.', tags: ['immunity'] }]));
+    else if (bodies.length === 3) answer(response, '- [finding] New result');
+    else answer(response, '遵循用户指定的中文回复。');
+  }); t.after(server.close);
+  const config = settings(server.url); config.language = 'en'; config.autoMemory = true;
+  const initial = workspace(); initial.notes = '保留我的中文笔记';
+  initial.memories = [{ id: 'old', type: 'question', title: '原有中文疑问', body: '不能改写此条已有内容', tags: [], createdAt: 1, source: 'user' }];
+  const h = harness(config, initial, { main: ['正文原始内容', '第二页'], sup: ['补充证据'] }); t.after(() => h.service.dispose());
+  await h.service.start({ ...request(), kind: 'summary', prompt: '' }); assert.equal((await h.terminal()).type, 'done');
+  assert.equal(bodies.length, 3);
+  assert.equal(bodies[0].messages[0].content, getSystemPrompt('summary', 'en'));
+  assert.equal(bodies[0].messages.at(-1).content, getSummaryPrompt('en'));
+  assert.match(bodies[0].messages[1].content, /正文原始内容/); assert.match(bodies[0].messages[1].content, /保留我的中文笔记/);
+  assert.equal(bodies[1].messages[0].content, getSystemPrompt('memory', 'en'));
+  assert.equal(bodies[2].messages[0].content, getSystemPrompt('index', 'en'));
+  assert.equal(h.state().notes, initial.notes); assert.deepEqual(h.state().memories[0], initial.memories[0]);
+  assert.equal(h.state().summary?.content, 'English summary [Main.pdf p.1]');
+  assert.ok(h.events.some(event => event.text === 'Answer saved. Extracting long-term memories…'));
+  config.autoMemory = false; h.next();
+  const prompt = '请用中文回答，但不要翻译之前的对话。';
+  await h.service.start({ ...request('explicit-language'), prompt }); await h.terminal();
+  assert.equal(bodies[3].messages.at(-1).content, prompt);
+  assert.match(bodies[3].messages[0].content, /explicit response-language request/);
+  assert.equal(h.state().conversations[0].messages.at(-1)?.content, '遵循用户指定的中文回复。');
+  assert.equal(h.state().conversations[0].messages[1].content, 'English summary [Main.pdf p.1]');
+});
+
+test('AI validation and stream errors follow locale without exposing API keys', async t => {
+  const config = settings('http://127.0.0.1:1'); config.language = 'en'; config.providers.deepseek.apiKey = '';
+  const h = harness(config); t.after(() => h.service.dispose());
+  await assert.rejects(h.service.start(request()), /Enter an API key in Settings/);
+  config.language = 'zh-CN'; await assert.rejects(h.service.start(request()), /设置中输入 API Key/);
+  const server = await mock((_body, response) => { response.writeHead(401, { 'Content-Type': 'application/json' }); response.end(JSON.stringify({ error: { message: 'invalid test-key' } })); }); t.after(server.close);
+  await assert.rejects(streamCompletion(settings(server.url).providers.deepseek, [{ role: 'user', content: 'Hi' }], new AbortController().signal, () => {}, 1000, 'en'), error => error instanceof Error && error.message === 'API request failed (HTTP 401): invalid [API Key]');
+});
+
+test('English interrupted response preserves received text with an English lifecycle notice', async t => {
+  const server = await mock((_body, response) => { response.writeHead(200, { 'Content-Type': 'text/event-stream' }); response.write(frame({ choices: [{ delta: { content: 'Unchanged answer text' } }] })); }); t.after(server.close);
+  const config = settings(server.url); config.language = 'en';
+  const h = harness(config); t.after(() => h.service.dispose());
+  const emit = h.host.emit; h.host.emit = event => { emit(event); if (event.type === 'delta') h.service.abort('request-1'); };
+  await h.service.start(request()); const final = await h.terminal();
+  assert.equal(final.text, 'Generation stopped.'); assert.equal(final.interrupted, true);
+  assert.equal(h.state().conversations[0].messages.at(-1)?.content, 'Unchanged answer text\n\n> The response was interrupted; the text above is incomplete.');
 });

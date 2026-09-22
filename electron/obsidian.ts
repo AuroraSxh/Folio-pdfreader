@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ExportResult, Settings, Workspace } from '../shared/types';
 import { MEMORY_LABELS } from '../shared/types';
+import { translate, type Language } from '../shared/i18n';
 import { safeFilename } from './store';
 
 const START = '<!-- folio:generated:start -->';
@@ -19,7 +20,9 @@ function label(value: string): string { return clean(value).replace(/[\[\]\\]/g,
 function iso(value: number): string { return new Date(Number.isFinite(value) ? value : 0).toISOString(); }
 
 /** A stable generated region lets Obsidian edits outside that region survive all re-exports. */
-export function renderMarkdown(workspace: Workspace, firstReadOverride?: string, libraryPath?: string): string {
+export function renderMarkdown(workspace: Workspace, firstReadOverride?: string, libraryPath?: string, language: Language = 'zh-CN'): string {
+  const t = (zh: string, en: string, values?: Record<string, string | number>) => translate(language, zh, en, values);
+  const memoryLabels = { finding: t(MEMORY_LABELS.finding, 'Findings'), interpretation: t(MEMORY_LABELS.interpretation, 'Interpretations'), question: t(MEMORY_LABELS.question, 'Open questions'), 'user-note': t(MEMORY_LABELS['user-note'], 'Personal interests'), 'cross-ref': t(MEMORY_LABELS['cross-ref'], 'Cross-paper links') };
   const fm = ['---', `article_id: ${scalar(workspace.id)}`, `title: ${scalar(workspace.title)}`];
   if (workspace.authors) fm.push(`authors: ${scalar(workspace.authors)}`);
   if (workspace.journal) fm.push(`journal: ${scalar(workspace.journal)}`);
@@ -30,49 +33,50 @@ export function renderMarkdown(workspace: Workspace, firstReadOverride?: string,
   const out = [...fm, START, '', `# ${clean(workspace.title).replace(/[\r\n]/g, ' ')}`, ''];
   if (workspace.doi) out.push(`[DOI: ${label(workspace.doi)}](https://doi.org/${encodeURI(workspace.doi).replace(/[()]/g, c => encodeURIComponent(c))})`, '');
   if (workspace.documents.length) {
-    out.push('## 论文文件', '');
+    out.push(t('## 论文文件', '## Paper files'), '');
     for (const doc of workspace.documents) {
       const location = libraryPath ? pathToFileURL(path.resolve(libraryPath, workspace.id, doc.fileName)).href : encodeURI(doc.fileName).replace(/[()]/g, c => encodeURIComponent(c));
-      out.push(`- ${doc.role === 'main' ? '正文' : '补充材料'}：[${label(doc.name)}](${location.replace(/[()]/g, c => encodeURIComponent(c))}) · ${doc.pageCount || '未知'} 页`);
+      const pages = doc.pageCount ? t('{count} 页', doc.pageCount === 1 ? '{count} page' : '{count} pages', { count: doc.pageCount }) : t('未知 页', 'Page count unknown');
+      out.push(`- ${doc.role === 'main' ? t('正文', 'Main text') : t('补充材料', 'Supplement')}${t('：', ': ')}[${label(doc.name)}](${location.replace(/[()]/g, c => encodeURIComponent(c))}) · ${pages}`);
     }
     out.push('');
   }
-  if (workspace.summary?.content) out.push('## AI 总结', '', `> ${label(workspace.summary.provider)} / ${label(workspace.summary.model)} · ${iso(workspace.summary.createdAt)}`, '', clean(workspace.summary.content), '');
-  if (workspace.memoryIndex.trim()) out.push('## 记忆索引', '', clean(workspace.memoryIndex.trim()), '');
+  if (workspace.summary?.content) out.push(t('## AI 总结', '## AI summary'), '', `> ${label(workspace.summary.provider)} / ${label(workspace.summary.model)} · ${iso(workspace.summary.createdAt)}`, '', clean(workspace.summary.content), '');
+  if (workspace.memoryIndex.trim()) out.push(t('## 记忆索引', '## Memory index'), '', clean(workspace.memoryIndex.trim()), '');
   if (workspace.memories.length) {
-    out.push('## 长期记忆', '');
+    out.push(t('## 长期记忆', '## Long-term memories'), '');
     for (const type of ['finding', 'interpretation', 'question', 'cross-ref', 'user-note'] as const) {
       const entries = workspace.memories.filter(m => m.type === type);
       if (!entries.length) continue;
-      out.push(`### ${MEMORY_LABELS[type]}`, '');
+      out.push(`### ${memoryLabels[type]}`, '');
       for (const entry of entries) {
         out.push(`- **${label(entry.title)}**`, '', ...clean(entry.body).split('\n').map(line => `  ${line}`), '');
-        if (entry.tags.length) out.push(`  主题：${entry.tags.map(label).join(' · ')}`, '');
+        if (entry.tags.length) out.push(`  ${t('主题：', 'Topics: ')}${entry.tags.map(label).join(' · ')}`, '');
       }
     }
   }
-  if (workspace.notes.trim()) out.push('## 我的笔记', '', clean(workspace.notes.trim()), '');
+  if (workspace.notes.trim()) out.push(t('## 我的笔记', '## My notes'), '', clean(workspace.notes.trim()), '');
   const annotated = workspace.documents.filter(doc => doc.annotations.length);
   if (annotated.length) {
-    out.push('## PDF 标注', '');
+    out.push(t('## PDF 标注', '## PDF annotations'), '');
     for (const doc of annotated) {
       out.push(`### ${label(doc.name)}`, '');
       for (const annotation of doc.annotations) {
-        const kind=annotation.kind==='underline'?'下划线':annotation.kind==='strikeout'?'删除线':'高亮';
-        out.push(`- **第 ${annotation.page} 页 · ${kind}**${annotation.comment ? `：${clean(annotation.comment)}` : ''}`, '');
+        const kind=annotation.kind==='underline'?t('下划线','Underline'):annotation.kind==='strikeout'?t('删除线','Strikeout'):t('高亮','Highlight');
+        out.push(`- **${t('第 {page} 页','Page {page}',{page:annotation.page})} · ${kind}**${annotation.comment ? `${t('：', ': ')}${clean(annotation.comment)}` : ''}`, '');
         if (annotation.text) out.push(...clean(annotation.text).split('\n').map(line => `  > ${line}`), '');
       }
     }
   }
   const conversations = workspace.conversations.filter(c => c.messages.length);
   if (conversations.length) {
-    out.push('## 阅读对话', '');
+    out.push(t('## 阅读对话', '## Reading conversations'), '');
     for (const conversation of conversations) {
       out.push(`### ${clean(conversation.title).replace(/[\r\n]/g, ' ')}`, '');
-      for (const message of conversation.messages) out.push(`#### ${message.role === 'user' ? '我' : '助手'} · ${iso(message.createdAt)}${message.interrupted ? '（已中断）' : ''}`, '', clean(message.content), '');
+      for (const message of conversation.messages) out.push(`#### ${message.role === 'user' ? t('我', 'Me') : t('助手', 'Assistant')} · ${iso(message.createdAt)}${message.interrupted ? t('（已中断）', ' (interrupted)') : ''}`, '', clean(message.content), '');
     }
   }
-  out.push('_由 Folio 导出。此标记区域由应用更新；可在区域之外自由添加笔记。_', '', END, '');
+  out.push(t('_由 Folio 导出。此标记区域由应用更新；可在区域之外自由添加笔记。_', '_Exported by Folio. The app updates this marked region; add personal notes outside it to preserve them._'), '', END, '');
   return out.join('\n');
 }
 
@@ -119,18 +123,19 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 async function performExport(workspace: Workspace, settings: Settings): Promise<ExportResult> {
-  if (!settings.vaultPath.trim()) throw new Error('请先在设置中选择 Obsidian Vault 文件夹。');
+  const t = (zh: string, en: string) => translate(settings.language, zh, en);
+  if (!settings.vaultPath.trim()) throw new Error(t('请先在设置中选择 Obsidian Vault 文件夹。', 'Choose an Obsidian vault folder in Settings first.'));
   const vault = await realpath(settings.vaultPath);
-  if (!(await lstat(vault)).isDirectory()) throw new Error('Obsidian Vault 路径不是文件夹。');
+  if (!(await lstat(vault)).isDirectory()) throw new Error(t('Obsidian Vault 路径不是文件夹。', 'The Obsidian vault path is not a folder.'));
   const subfolder = settings.obsidianSubfolder.trim();
   const segments = subfolder.split(/[\\/]+/).filter(Boolean);
-  if (path.isAbsolute(subfolder) || segments.some(part => part === '..' || part === '.' || part.includes('\0'))) throw new Error('Obsidian 子文件夹必须是 Vault 内的相对路径。');
+  if (path.isAbsolute(subfolder) || segments.some(part => part === '..' || part === '.' || part.includes('\0'))) throw new Error(t('Obsidian 子文件夹必须是 Vault 内的相对路径。', 'The Obsidian subfolder must be a relative path inside the vault.'));
   let directory = vault;
   for (const segment of segments) {
     directory = path.join(directory, segment);
     await mkdir(directory, { recursive: true });
     const resolved = await realpath(directory);
-    if (resolved !== vault && !resolved.startsWith(vault + path.sep)) throw new Error('Obsidian 子文件夹不能通过链接指向 Vault 外部。');
+    if (resolved !== vault && !resolved.startsWith(vault + path.sep)) throw new Error(t('Obsidian 子文件夹不能通过链接指向 Vault 外部。', 'The Obsidian subfolder cannot link outside the vault.'));
   }
   const existing = await findExisting(directory, workspace.id);
   const filename = safeFilename(clean(workspace.title));
@@ -141,7 +146,7 @@ async function performExport(workspace: Workspace, settings: Settings): Promise<
     let count = 2;
     while (await exists(filePath)) filePath = path.join(directory, `${filename} (${suffix}-${count++}).md`);
   }
-  let markdown = renderMarkdown(workspace, existing?.firstRead, settings.libraryPath);
+  let markdown = renderMarkdown(workspace, existing?.firstRead, settings.libraryPath, settings.language);
   if (existing) {
     const old = frontmatter(existing.text)!;
     const fresh = frontmatter(markdown)!;
@@ -154,7 +159,7 @@ async function performExport(workspace: Workspace, settings: Settings): Promise<
       body = old.body.slice(0, first) + fresh.body.slice(generatedStart, generatedEnd) + old.body.slice(last + END.length);
     } else {
       // Older exports had no managed region: retain their body rather than overwrite user edits.
-      body = fresh.body + (old.body.trim() ? `\n## 先前笔记（保留）\n\n${old.body}` : '');
+      body = fresh.body + (old.body.trim() ? `\n${t('## 先前笔记（保留）', '## Previous notes (preserved)')}\n\n${old.body}` : '');
     }
     markdown = `---\n${fresh.raw}${extra ? '\n' + extra : ''}\n---\n${body}`;
   }

@@ -1,6 +1,6 @@
 {
   "name": "folio-paper-reader",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "A local-first academic PDF workspace with DeepSeek and Obsidian",
   "author": "Folio",
   "private": true,
@@ -19,7 +19,8 @@
     "package:win": "npm run build && electron-builder --win dir --x64",
     "dist:win": "npm run build && electron-builder --win --x64",
     "test:win-package": "node scripts/verify-windows.mjs",
-    "test:reading": "node scripts/e2e-reading.mjs"
+    "test:reading": "node scripts/e2e-reading.mjs",
+    "test:locale": "node scripts/e2e-locale.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.577.0",
@@ -48,7 +49,7 @@
     "appId": "com.folio.paperreader",
     "productName": "Folio",
     "directories": {
-      "output": "release/v0.2.2"
+      "output": "release/v0.3.0"
     },
     "files": [
       "dist/**/*",
@@ -65,7 +66,17 @@
       "target": [
         "zip"
       ],
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "extraResources": [
+        {
+          "from": "node_modules/electron/dist/LICENSE",
+          "to": "LICENSE.electron.txt"
+        },
+        {
+          "from": "node_modules/electron/dist/LICENSES.chromium.html",
+          "to": "LICENSES.chromium.html"
+        }
+      ]
     },
     "dmg": {
       "title": "Folio",

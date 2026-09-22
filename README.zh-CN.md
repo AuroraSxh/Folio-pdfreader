@@ -12,15 +12,16 @@ Folio 是一个学术 PDF 阅读器，支持 macOS 和 Windows。把一篇论文
 - 选文复制、高亮、下划线、删除线和批注，支持撤销与 PDF 导出。
 - 用 DeepSeek 等 AI 服务解释选文、讨论文章、整理阅读笔记。
 - 将笔记导出到 Obsidian 或 Markdown。论文、批注和笔记保存在本地。
+- 支持中英文界面切换，可在应用内检查 GitHub 新版并下载安装包。
 
 ## 下载
 
 [最新版本与更新说明](https://github.com/AuroraSxh/Folio-pdfreader/releases/latest)
 
-| 平台 | v0.2.2 |
+| 平台 | v0.3.0 |
 | --- | --- |
-| macOS 13+，Apple Silicon / Intel | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.2.2/Folio-0.2.2-mac-universal.dmg) |
-| Windows 10 / 11，x64 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.2.2/Folio-0.2.2-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.2.2/Folio-0.2.2-windows-x64-portable.exe) |
+| macOS 13+，Apple Silicon / Intel | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-mac-universal.dmg) |
+| Windows 10 / 11，x64 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-portable.exe) |
 
 Mac 打开 DMG 后，将 Folio 拖入「应用程序」；更新时退出旧版并选择替换即可。论文和笔记会保留。
 
@@ -38,6 +39,7 @@ npm run dev
 ```bash
 npm run build       # 生产构建
 npm test            # 单元测试
+npm run test:locale # 双语与更新界面检查
 npm run dist:dmg    # Mac 通用安装包，需在 Mac 上构建
 npm run dist:win    # Windows x64 安装版与免安装版
 ```

@@ -1,6 +1,8 @@
 export type ProviderId = 'deepseek' | 'openai' | 'anthropic' | 'custom';
 export interface ProviderConfig { id: ProviderId; apiKey?: string; hasKey?: boolean; baseURL: string; model: string; maxTokens: number; thinking?: boolean; reasoningEffort?: 'low'|'high'|'max' }
 export interface Settings {
+  language: import('./i18n').Language;
+  autoCheckUpdates: boolean;
   activeProvider: ProviderId; providers: Record<ProviderId, ProviderConfig>;
   libraryPath: string; vaultPath: string; obsidianSubfolder: string;
   autoSummary: boolean; autoMemory: boolean; contextMaxChars: number;
@@ -65,6 +67,12 @@ export interface FolioAPI {
   printPdf(workspaceId: string, documentId: string): Promise<void>;
   revealWorkspace(id: string): Promise<void>;
   saveSettings(settings: Settings): Promise<Settings>;
+  getUpdateStatus(): Promise<import('./updates').UpdateStatus>;
+  checkForUpdates(): Promise<import('./updates').UpdateStatus>;
+  downloadUpdate(): Promise<import('./updates').UpdateStatus>;
+  cancelUpdate(): Promise<import('./updates').UpdateStatus>;
+  installUpdate(): Promise<void>;
+  onUpdate(callback: (status: import('./updates').UpdateStatus) => void): () => void;
   pickFolder(kind: 'vault'): Promise<string | null>;
   startChat(request: ChatRequest): Promise<void>;
   abortChat(requestId: string): Promise<void>;
