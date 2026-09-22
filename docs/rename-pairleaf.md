@@ -15,6 +15,8 @@
 
 请勿同时运行新旧应用来编辑同一论文库。以后从 Pairleaf 更新到 Pairleaf，退出旧版后拖入并选择「替换」即可。
 
+已用隔离测试文库验证 Folio 0.4.1 → Pairleaf 0.5.0：PDF、笔记、批注、设置和双栏页码／缩放均保持一致。测试没有读取真实用户文库或钥匙串。
+
 ### Windows 更新
 
 退出 Folio 后运行 Pairleaf 安装程序，按向导更新。免安装版改用新的 Pairleaf EXE。原有数据继续放在当前用户目录；不要把改名理解为创建了另一份论文库，也不要同时运行新旧 EXE。确认新版能打开原论文后，可删除旧的免安装 EXE。
@@ -47,6 +49,8 @@ Starting with 0.5.0, both Mac and Windows editions are named **Pairleaf**. This 
 4. Once confirmed, you can remove the old **Folio.app**. Remove only the app, keeping the library, settings, and Keychain items. Do not let an app-cleaning utility remove those data folders.
 
 Avoid running both apps against the same library. Later Pairleaf-to-Pairleaf updates use the normal process: quit, drag into Applications, and replace.
+
+An isolated Folio 0.4.1 → Pairleaf 0.5.0 upgrade check preserved PDF bytes, notes, annotations, settings, and both panes’ page/zoom. It did not access a real user library or Keychain.
 
 ### Updating Windows
 
