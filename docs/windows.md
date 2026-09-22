@@ -10,7 +10,7 @@
 - [v0.5.0 免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-windows-x64-portable.exe)：程序临时解包运行；论文与设置仍保存在当前 Windows 用户的数据目录，不会自动随 EXE 搬走。
 - 构建未使用 Windows 代码签名证书，因此安装时可能显示未知发布者。这与 Mac 的本机 ad-hoc 签名是两种不同的签名机制。
 
-0.5.0 下载链接将在发布后可用。更新前先退出 Folio 或 Pairleaf；不要同时运行新旧应用编辑同一论文库。
+更新前先退出 Folio 或 Pairleaf；不要同时运行新旧应用编辑同一论文库。
 
 点击「导入论文」选择一个或多个 PDF。导入整个论文文件夹用「文件 → 导入文章文件夹…」，或直接拖入文件夹。安装版会注册 PDF「打开方式」，支持从资源管理器发送 PDF 给已经运行的 Pairleaf；不会要求用户将 Pairleaf 设为系统默认阅读器。
 

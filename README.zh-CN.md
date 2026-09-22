@@ -19,8 +19,6 @@ Pairleaf（原名 Folio）是一个学术 PDF 阅读器，支持 macOS 和 Windo
 
 [最新版本与更新说明](https://github.com/AuroraSxh/Folio-pdfreader/releases/latest)
 
-0.5.0 正在准备发布，下方链接将在发布后可用。
-
 | 平台 | 版本 | 下载 |
 | --- | --- | --- |
 | macOS 13+，Apple Silicon / Intel | 0.5.0 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-mac-universal.dmg) |
@@ -36,7 +34,7 @@ Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文
 
 | 版本 | 主要变化 |
 | --- | --- |
-| 0.5.0（准备发布） | Mac 与 Windows 同步更名 Pairleaf，沿用原论文库和设置；Windows 增加实验性的本地系统语音识别与朗读。 |
+| [0.5.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.0) | Mac 与 Windows 同步更名 Pairleaf，沿用原论文库和设置；Windows 增加实验性的本地系统语音识别与朗读。 |
 | [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | 改进中英混读、实验术语读法及引用朗读；增加中英文独立音色与试听。语音默认关闭，附音色设置与使用教程；可删除单轮问答及关联自动记忆，同步更新 Windows 安装版和免安装版。 |
 | [0.4.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.0) | Mac 接入 Apple 语音识别和系统朗读；语音与文字共用聊天记录，收起 AI 面板后仍可使用语音控制条。 |
 | [0.3.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.3.0) | 界面、菜单和笔记导出支持中英文；增加 GitHub 新版检测和安装包下载校验。 |

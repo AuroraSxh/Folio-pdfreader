@@ -19,8 +19,6 @@ A desktop PDF reader for academic papers, previously called Folio. Keep a paper 
 
 [Latest release](https://github.com/AuroraSxh/Folio-pdfreader/releases/latest)
 
-0.5.0 is being prepared; its download links will work after publication.
-
 | Platform | Version | Download |
 | --- | --- | --- |
 | macOS 13+, Apple Silicon / Intel | 0.5.0 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-mac-universal.dmg) |
@@ -36,7 +34,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
-| 0.5.0 (in preparation) | Renamed Folio to Pairleaf on Mac and Windows, keeping existing libraries and settings. Adds experimental local Windows speech recognition and reading voices. |
+| [0.5.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.0) | Renamed Folio to Pairleaf on Mac and Windows, keeping existing libraries and settings. Adds experimental local Windows speech recognition and reading voices. |
 | [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | Better mixed-language speech and scientific term pronunciation; shorter spoken citations, separate Chinese/English voices, and voice previews. Voice stays off until started. Includes a setup tutorial and deletion of individual question-and-answer exchanges. Windows installer and portable builds updated. |
 | [0.4.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.0) | Mac voice conversations using Apple speech recognition and system voices, with a shared text history and controls that stay available when the AI panel is hidden. |
 | [0.3.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.3.0) | English and Chinese UI, menus, and note exports; GitHub update checks and verified installer downloads. |
