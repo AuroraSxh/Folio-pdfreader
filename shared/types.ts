@@ -25,7 +25,7 @@ export interface PaperDocument {
 }
 export type MemoryType = 'finding' | 'interpretation' | 'question' | 'user-note' | 'cross-ref';
 export interface Memory { id: string; type: MemoryType; title: string; body: string; tags: string[]; createdAt: number; source: 'ai' | 'user' }
-export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean }
+export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice' }
 export interface Conversation { id: string; title: string; createdAt: number; messages: ChatMessage[] }
 export interface Summary { content: string; provider: string; model: string; createdAt: number }
 export interface Workspace {
@@ -37,7 +37,7 @@ export interface Workspace {
 }
 export interface TextSelection { documentId: string; documentName: string; page: number; text: string; rects: number[][] }
 export interface DocumentIndex { pageCount: number; outline: OutlineItem[]; title?: string; authors?: string; pages: string[] }
-export interface ChatRequest { requestId: string; workspaceId: string; conversationId: string; prompt: string; kind: 'chat' | 'summary'; documentIds: string[]; selection?: TextSelection }
+export interface ChatRequest { requestId: string; workspaceId: string; conversationId: string; prompt: string; kind: 'chat' | 'summary'; documentIds: string[]; selection?: TextSelection; source?: 'voice'; voiceLocale?: 'zh-CN' | 'en-US' }
 export interface ChatEvent { requestId: string; workspaceId: string; type: 'delta' | 'done' | 'error' | 'memory' | 'status'; text?: string; workspace?: Workspace; interrupted?: boolean }
 export interface ExportResult { path: string; overwritten?: boolean }
 export interface RemovedWorkspace { id: string; title: string; authors: string; tags: string[]; documentCount: number; removedAt: number }
@@ -76,6 +76,12 @@ export interface FolioAPI {
   pickFolder(kind: 'vault'): Promise<string | null>;
   startChat(request: ChatRequest): Promise<void>;
   abortChat(requestId: string): Promise<void>;
+  voiceCapabilities(locale?: string): Promise<import('./voice').VoiceCapabilities>;
+  voiceListen(options: import('./voice').VoiceListenOptions): Promise<void>;
+  voiceStopListening(sessionId: string): Promise<{ text: string }>;
+  voiceSpeak(options: import('./voice').VoiceSpeakOptions): Promise<void>;
+  voiceStopSpeaking(): Promise<void>;
+  onVoice(callback: (event: import('./voice').VoiceEvent) => void): () => void;
   newConversation(workspaceId: string): Promise<Workspace>;
   deleteMemory(workspaceId: string, memoryId: string): Promise<Workspace>;
   exportMarkdown(workspaceId: string, target: 'file'|'obsidian'): Promise<ExportResult | null>;

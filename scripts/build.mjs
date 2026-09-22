@@ -1,3 +1,4 @@
+await import('./build-apple-speech.mjs');
 import { build as bundle } from 'esbuild';
 import { build } from 'vite';
 import { cp, mkdir } from 'node:fs/promises';

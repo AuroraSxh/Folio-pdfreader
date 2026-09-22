@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Folio Speech";
+"NSMicrophoneUsageDescription" = "Folio uses your microphone only when you start voice conversation, to transcribe your question on this Mac.";
+"NSSpeechRecognitionUsageDescription" = "Folio uses Apple's speech recognition to turn your spoken questions into text. Only on-device recognition is enabled.";

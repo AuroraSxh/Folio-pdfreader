@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>com.folio.paperreader.apple-speech</string>
+<key>CFBundleName</key><string>Folio Speech</string>
+<key>CFBundleDisplayName</key><string>Folio Speech</string>
+<key>CFBundleExecutable</key><string>FolioSpeech</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
+<key>LSMinimumSystemVersion</key><string>13.0</string>
+<key>LSUIElement</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>Folio uses your microphone only when you start voice conversation, to transcribe your question on this Mac.</string>
+<key>NSSpeechRecognitionUsageDescription</key><string>Folio uses Apple's speech recognition to turn your spoken questions into text. Only on-device recognition is enabled.</string>
+</dict></plist>

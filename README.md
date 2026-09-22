@@ -11,6 +11,7 @@ A desktop PDF reader for academic papers. Keep a paper and its supplements in on
 - Read main and supplementary PDFs side by side or stacked, with independent scrolling and zoom.
 - Copy text, highlight, underline, strike through, and add comments. Undo edits and export annotated PDFs.
 - Ask DeepSeek or another supported AI provider to explain passages and help with reading notes.
+- Talk to the AI on Mac using Apple speech recognition and system voices, with a shared chat history and no extra speech key.
 - Export notes to Obsidian or Markdown. Papers, annotations, and notes stay on your computer.
 - Switch between English and Chinese, and check GitHub for updates from the app.
 
@@ -18,10 +19,10 @@ A desktop PDF reader for academic papers. Keep a paper and its supplements in on
 
 [Latest release](https://github.com/AuroraSxh/Folio-pdfreader/releases/latest)
 
-| Platform | v0.3.0 |
-| --- | --- |
-| macOS 13+, Apple Silicon / Intel | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-mac-universal.dmg) |
-| Windows 10 / 11, x64 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-portable.exe) |
+| Platform | Version | Download |
+| --- | --- | --- |
+| macOS 13+, Apple Silicon / Intel | 0.4.0 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.4.0/Folio-0.4.0-mac-universal.dmg) |
+| Windows 10 / 11, x64 | 0.3.0 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-portable.exe) |
 
 On Mac, open the DMG and drag Folio into Applications. To update, quit the old version and replace it. Your papers and notes are kept.
 
@@ -33,6 +34,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
+| [0.4.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.0) | Mac voice conversations using Apple speech recognition and system voices, with a shared text history and controls that stay available when the AI panel is hidden. |
 | [0.3.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.3.0) | English and Chinese UI, menus, and note exports; GitHub update checks and verified installer downloads. |
 | [0.2.2](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.2.2) | Add comments to selected text from the context menu; edit or delete annotations, with undo. First GitHub release. |
 | 0.2.1 | Drag the floating AI companion and remember its position. |
@@ -41,7 +43,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 ## Development
 
-Node.js 24 and npm are required.
+Node.js 24 and npm are required. Mac builds also use Xcode Command Line Tools with the macOS 26 SDK to build the native speech helper. See [Mac voice support](docs/apple-voice.md).
 
 ```bash
 npm ci
@@ -52,6 +54,7 @@ npm run dev
 npm run build       # Production build
 npm test            # Unit tests
 npm run test:locale # Language and update UI checks
+npm run test:voice  # Voice UI checks with simulated speech and AI
 npm run dist:dmg    # Universal Mac DMG; build on a Mac
 npm run dist:win    # Windows x64 installer and portable app
 ```

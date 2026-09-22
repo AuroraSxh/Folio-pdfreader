@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, powerMonitor, shell } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -8,6 +8,7 @@ import { exportAnnotatedPdf } from './pdf-export';
 import { writeDemo } from './demo';
 import { createAIService } from './ai';
 import { createUpdateService } from './updater';
+import { createVoiceService } from './voice';
 import type { UpdateService } from '../shared/updates';
 import { renderMarkdown, exportToObsidian } from './obsidian';
 import { isApplicationURL, pdfDialogOptions, pdfPathsFromArguments, sameLocalPath } from './desktop';
@@ -21,6 +22,8 @@ let library:LibraryStore;
 let settings:SettingsStore;
 let ai:ReturnType<typeof createAIService>;
 let updater:UpdateService;
+let voice:ReturnType<typeof createVoiceService>|undefined;
+let voiceShutdown:Promise<void>=Promise.resolve();
 let autoUpdateTimer:ReturnType<typeof setTimeout>|undefined;
 const t=(zh:string,en:string,values?:Record<string,string|number>)=>translate(settings?.getLanguage()??'zh-CN',zh,en,values);
 const pendingFiles:string[]=[];
@@ -127,6 +130,21 @@ function flushRenderer():Promise<void>{
 }
 
 function emit(channel:string,value:unknown){if(window&&!window.isDestroyed())window.webContents.send(`folio:${channel}`,value);}
+async function voiceService(){
+  // A new window/session must not open a second microphone while a previous
+  // helper is still stopping after a lock, crash, or window close.
+  let pending:Promise<void>;
+  do { pending=voiceShutdown;await pending; } while(pending!==voiceShutdown);
+  return voice??=createVoiceService({platform:process.platform,
+    helperPath:path.join(app.isPackaged?process.resourcesPath:__dirname,'apple-speech','Folio Speech.app','Contents','MacOS','FolioSpeech'),
+    emit:event=>emit('voice',event)});
+}
+async function stopVoice(){
+  emit('command','stop-voice');
+  const current=voice;voice=undefined;
+  voiceShutdown=Promise.all([voiceShutdown,current?.dispose()]).then(()=>{});
+  await voiceShutdown;
+}
 function trusted(event:Electron.IpcMainInvokeEvent|Electron.IpcMainEvent){
   if(event.sender!==window?.webContents || event.senderFrame!==event.sender.mainFrame)throw new Error(t("拒绝未授权窗口请求","Unauthorized window request rejected."));
   const url=event.senderFrame?.url??'';
@@ -211,6 +229,11 @@ function registerIPC(){
   handle('pick-folder',async(kind:string)=>{if(kind!=='vault')throw new Error(t("无效目录类型","Invalid folder type."));const r=await dialog.showOpenDialog(window!,{title:t("选择 Obsidian 仓库目录","Choose an Obsidian vault folder"),properties:['openDirectory','createDirectory']});return r.canceled?null:r.filePaths[0];});
   handle('start-chat',(request:ChatRequest)=>ai.start(request));
   handle('abort-chat',(id:string)=>ai.abort(id));
+  handle('voice-capabilities',async(locale?:string)=>(await voiceService()).capabilities(locale));
+  handle('voice-listen',async(options)=>(await voiceService()).listen(options));
+  handle('voice-stop-listening',(sessionId:string)=>voice?voice.stopListening(sessionId):{text:''});
+  handle('voice-speak',async(options)=>(await voiceService()).speak(options));
+  handle('voice-stop-speaking',()=>voice?.stopSpeaking());
   handle('update-status',()=>updater.getStatus());
   handle('check-updates',()=>updater.check(true));
   handle('download-update',()=>updater.download());
@@ -278,14 +301,14 @@ async function createWindow(){
   window.webContents.setWindowOpenHandler(({url})=>{if(/^https?:/.test(url))void shell.openExternal(url);return {action:'deny'};});
   window.webContents.on('will-navigate',(event,url)=>{if(isApplicationURL(url,appFile,devURL))return;event.preventDefault();if(/^https?:/.test(url))void shell.openExternal(url);});
   window.webContents.session.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
-  window.webContents.on('render-process-gone',(_event,details)=>{void logEvent(`renderer-exit ${JSON.stringify(details)}`);});
+  window.webContents.on('render-process-gone',(_event,details)=>{void stopVoice();void logEvent(`renderer-exit ${JSON.stringify(details)}`);});
   window.webContents.on('did-fail-load',(_event,code,description,url,isMainFrame)=>{if(isMainFrame)void logEvent(`page-load-failed ${code} ${description} ${url}`);});
   window.once('ready-to-show',()=>window?.show());
   window.on('close',event=>{
     if(windowCanClose)return;event.preventDefault();
-    void flushRenderer().then(async()=>{await library.flush();windowCanClose=true;window?.close();}).catch(e=>{if(window)void dialog.showMessageBox(window,{type:'error',message:t("笔记尚未保存，窗口保持打开","Notes have not been saved; the window will remain open"),detail:localizeBackendError(e)});});
+    void flushRenderer().then(async()=>{await stopVoice();await library.flush();windowCanClose=true;window?.close();}).catch(e=>{if(window)void dialog.showMessageBox(window,{type:'error',message:t("笔记尚未保存，窗口保持打开","Notes have not been saved; the window will remain open"),detail:localizeBackendError(e)});});
   });
-  window.on('closed',()=>{window=null;});
+  window.on('closed',()=>{window=null;void stopVoice();});
   if(devURL)await window.loadURL(devURL);else await window.loadFile(appFile);
   // This needs a loaded renderer; awaiting it before loadFile can stall startup.
   // PDF panes own trackpad pinch while the surrounding UI stays at a fixed scale.
@@ -297,7 +320,7 @@ app.on('activate',()=>{if(initialized&&!window)void createWindow();});
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit();});
 app.on('before-quit',event=>{
   if(quitting||!library)return;event.preventDefault();quitting=true;
-  void (async()=>{await flushRenderer();await ai?.dispose();await library.flush();if(autoUpdateTimer)clearTimeout(autoUpdateTimer);await updater?.dispose();windowCanClose=true;app.quit();})().catch(e=>{quitting=false;if(window)void dialog.showMessageBox(window,{type:'error',message:t("退出前未能保存笔记","Could not save notes before quitting"),detail:localizeBackendError(e)});});
+  void (async()=>{await flushRenderer();await stopVoice();await ai?.dispose();await library.flush();if(autoUpdateTimer)clearTimeout(autoUpdateTimer);await updater?.dispose();windowCanClose=true;app.quit();})().catch(e=>{quitting=false;if(window)void dialog.showMessageBox(window,{type:'error',message:t("退出前未能保存笔记","Could not save notes before quitting"),detail:localizeBackendError(e)});});
 });
 
 if(primaryInstance)void app.whenReady().then(async()=>{
@@ -306,6 +329,8 @@ if(primaryInstance)void app.whenReady().then(async()=>{
   settings=new SettingsStore(app.getPath('userData'),root);await settings.init();library=new LibraryStore(root);await library.init();
   ai=createAIService({getWorkspace:id=>library.get(id),listWorkspaces:()=>library.list(),getSettings:()=>settings.get(),getDocumentPages:(id,doc)=>library.pages(id,doc),mutateWorkspace:(id,fn)=>library.mutate(id,fn),emit:event=>emit('chat',event)});
   initializeUpdater();
+  powerMonitor.on('suspend',()=>{void stopVoice();});
+  powerMonitor.on('lock-screen',()=>{void stopVoice();});
   registerIPC();makeMenu();initialized=true;await createWindow();
   // One delayed check per launch; the service owns its six-hour cache. Tests and
   // development runs never contact GitHub automatically. Manual checks still work.

@@ -24,6 +24,8 @@ async function harness(t: test.TestContext, platform: NodeJS.Platform = 'darwin'
   const library = new storeModule.LibraryStore(path.join(directory, 'Library')); await library.init();
   const handlers = new Map<string, (...args: any[]) => any>(), menus: any[][] = [], dialogs: any[] = [], sent: any[][] = [], opened: string[] = [], revealed: string[] = [], calls: string[] = [], timers: { callback: () => void; delay: number }[] = [];
   let quits = 0, updateHost: any, openError = '';
+  const voiceCalls: any[] = []; let voiceInstances = 0;
+  const voiceFactory = (options: any) => { voiceInstances++; return { capabilities: async (locale: string) => { voiceCalls.push(['capabilities', locale]); return { available:true,engine:'speech-analyzer',locales:['zh-CN'],voices:[] }; }, listen: async (value: any) => { voiceCalls.push(['listen', value]); options.emit({sessionId:value.sessionId,type:'listening'}); }, stopListening: async (id: string) => { voiceCalls.push(['stop',id]);return {text:'测试'}; }, speak: async (value: any) => { voiceCalls.push(['speak',value]); }, stopSpeaking: async () => { voiceCalls.push(['stop-speaking']); }, dispose: async () => { voiceCalls.push(['dispose']); } }; };
   const status: UpdateStatus = { phase: 'idle', currentVersion: '0.3.0' };
   const updater = { getStatus: () => status, check: async (force: boolean) => { calls.push(`check:${force}`); return status; }, download: async () => { calls.push('download'); return status; }, cancel: async () => { calls.push('cancel'); return status; }, install: async () => { calls.push('install'); await updateHost.flush(); await updateHost.openInstaller('/isolated/Folio-download'); return status; }, dispose: async () => { calls.push('dispose'); } };
   const mainFrame = { url: pathToFileURL(path.join(root, 'dist/index.html')).href };
@@ -38,13 +40,13 @@ async function harness(t: test.TestContext, platform: NodeJS.Platform = 'darwin'
     dialog: { showOpenDialog: async (_window: unknown, options: any) => { dialogs.push(options); return { canceled: true, filePaths: [] }; }, showMessageBox: async (_window: unknown, options: any) => { dialogs.push(options); return { response: 1 }; } },
   };
   const processMock = { ...process, platform, env: { ...(options.portable ? { PORTABLE_EXECUTABLE_FILE: 'Folio.exe' } : {}), ...(options.isolated ? { FOLIO_USER_DATA: directory } : {}) }, argv: ['Folio.exe'], cwd: () => directory } as unknown as NodeJS.Process;
-  const main = await loadBackendModule<any>('electron/main.ts', { electron, './store': storeModule, './settings': { SettingsStore }, './pdf-export': {}, './demo': {}, './ai': {}, './obsidian': {}, './desktop': { ...desktop, pdfDialogOptions: (mode: 'files' | 'folder' | 'mixed') => desktop.pdfDialogOptions(mode, platform) }, '../shared/i18n': i18n, './updater': { createUpdateService: (host: any) => { updateHost = host; return updater; } } },
-    `export const testMain={makeMenu,registerIPC,choosePdfs,localizeBackendError,initializeUpdater,scheduleUpdateCheck,setState(state:any){settings=state.settings;library=state.library;window=state.window;ai=state.ai;}};`, processMock,
+  const main = await loadBackendModule<any>('electron/main.ts', { electron, './voice': {createVoiceService:voiceFactory}, './store': storeModule, './settings': { SettingsStore }, './pdf-export': {}, './demo': {}, './ai': {}, './obsidian': {}, './desktop': { ...desktop, pdfDialogOptions: (mode: 'files' | 'folder' | 'mixed') => desktop.pdfDialogOptions(mode, platform) }, '../shared/i18n': i18n, './updater': { createUpdateService: (host: any) => { updateHost = host; return updater; } } },
+    `export const testMain={stopVoice,makeMenu,registerIPC,choosePdfs,localizeBackendError,initializeUpdater,scheduleUpdateCheck,setState(state:any){settings=state.settings;library=state.library;window=state.window;ai=state.ai;}};`, processMock,
     { setTimeout: (callback: () => void, delay: number) => { const timer = { callback, delay }; timers.push(timer); return timer; }, clearTimeout: () => {} });
   main.testMain.setState({ settings, library, window, ai: { cancelWorkspace: async (id: string) => { calls.push(`cancel-ai:${id}`); } } });
   main.testMain.initializeUpdater(); main.testMain.registerIPC(); main.testMain.makeMenu();
   const invoke = (name: string, ...args: any[]) => handlers.get(`folio:${name}`)!({ sender: webContents, senderFrame: mainFrame }, ...args);
-  return { directory, settings, library, main: main.testMain, menus, dialogs, sent, opened, revealed, calls, timers, updater, updateHost: () => updateHost, quits: () => quits, openError: (error: string) => { openError = error; }, invoke };
+  return { directory, settings, library, voiceCalls, voiceInstances: () => voiceInstances, handlers, main: main.testMain, menus, dialogs, sent, opened, revealed, calls, timers, updater, updateHost: () => updateHost, quits: () => quits, openError: (error: string) => { openError = error; }, invoke };
 }
 
 test('saving language rebuilds actual native menus immediately, including edit roles, and failed saves keep the menu', async t => {
@@ -111,4 +113,24 @@ test('install hooks save before opening, preserve the app on failure, and reveal
   await assert.rejects(openFailure.invoke('install-update'), /Installer could not open/); assert.equal(openFailure.quits(), 0);
   const portable = await harness(t, 'win32', { portable: true }); await portable.invoke('install-update');
   assert.equal(portable.opened.length, 0); assert.deepEqual(portable.revealed, ['/isolated/Folio-download']); assert.equal(portable.quits(), 0); assert.equal(portable.updateHost().portable, true);
+});
+
+
+test('native speech IPC is lazy, uses the trusted renderer and releases its helper when interrupted', async t => {
+  const h=await harness(t);
+  assert.equal(h.voiceInstances(),0);
+  await h.invoke('voice-stop-speaking');
+  assert.equal(h.voiceInstances(),0);
+  await assert.rejects(h.handlers.get('folio:voice-listen')!({sender:{},senderFrame:{}},{sessionId:'foreign',locale:'zh-CN'}),/未授权/);
+  assert.equal(h.voiceInstances(),0);
+  const capabilities=await h.invoke('voice-capabilities','zh-CN');
+  assert.equal(capabilities.engine,'speech-analyzer');assert.equal(h.voiceInstances(),1);
+  await h.invoke('voice-listen',{sessionId:'listen-1',locale:'zh-CN'});
+  assert.deepEqual(h.sent.at(-1),['folio:voice',{sessionId:'listen-1',type:'listening'}]);
+  assert.deepEqual(await h.invoke('voice-stop-listening','listen-1'),{text:'测试'});
+  await h.main.stopVoice();
+  assert.deepEqual(h.sent.at(-1),['folio:command','stop-voice']);
+  assert.deepEqual(h.voiceCalls.at(-1),['dispose']);
+  await h.invoke('voice-capabilities','en-US');
+  assert.equal(h.voiceInstances(),2);
 });

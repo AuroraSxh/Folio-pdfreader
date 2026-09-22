@@ -1,3 +1,4 @@
+await import('./build-apple-speech.mjs');
 import { context } from 'esbuild';
 import { createServer } from 'vite';
 import { spawn } from 'node:child_process';

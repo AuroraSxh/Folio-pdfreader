@@ -215,13 +215,14 @@ export function createAIService(host: AIHost) {
   }
 
   async function run(request: ChatRequest, settings: Settings, config: ProviderConfig, signal: AbortSignal) {
-    const language=normalizeLanguage(settings.language),t=(zh:string,en:string,values?:Record<string,string|number>)=>translate(language,zh,en,values);
+    const language=request.source==='voice'&&request.voiceLocale ? (request.voiceLocale==='en-US'?'en':'zh-CN') : normalizeLanguage(settings.language),t=(zh:string,en:string,values?:Record<string,string|number>)=>translate(language,zh,en,values);
     const base = { requestId: request.requestId, workspaceId: request.workspaceId };
     let partial = '';
     let saved = false;
     let warnings: string[] = [];
     try {
-      const user: ChatMessage = { id: randomUUID(), role: 'user', content: request.prompt || getSummaryPrompt(language), createdAt: Date.now() };
+      const origin = request.source === 'voice' ? { source: 'voice' as const } : {};
+      const user: ChatMessage = { id: randomUUID(), role: 'user', content: request.prompt || getSummaryPrompt(language), createdAt: Date.now(), ...origin };
       let workspace = await host.mutateWorkspace(request.workspaceId, ws => {
         signal.throwIfAborted();
         const conversation = ws.conversations.find(c => c.id === request.conversationId)!;
@@ -257,7 +258,10 @@ export function createAIService(host: AIHost) {
       // Anthropic conversations must begin with a user turn.
       while (history[0]?.role === 'assistant') history.shift();
       if (history.length < prior.length) warnings.push(t('本次仅附带最近 {count} 条对话，较早对话未发送。','Only the latest {count} conversation messages are included; earlier messages were not sent.',{count:history.length}));
-      const instruction = getSystemPrompt(request.kind === 'summary' ? 'summary' : request.selection ? 'selection' : 'chat',language);
+      const instruction = getSystemPrompt(request.kind === 'summary' ? 'summary' : request.selection ? 'selection' : 'chat',language) + (request.source === 'voice' ? '\n\n' + t(
+        '当前为语音对话，你的回答将原样显示并朗读。请用适合口头交流的简洁段落回答，保留准确的术语与必要的文献页码引用；用户要求详解时再展开。不要输出额外的朗读稿或朗读指令。',
+        'This is a voice conversation. Your answer will be displayed and read aloud. Use concise conversational paragraphs, retaining precise terminology and necessary page citations. Expand when the user asks for detail. Do not provide a separate speech script or playback instructions.'
+      ) : '');
       const messages: LLMMessage[] = [
         { role: 'system', content: instruction },
         { role: 'user', content: `${context.content}\n\n${memoryContext}\n\n${t('以上为本次阅读的参考数据。','The content above is reference data for this reading session.')}` },
@@ -271,7 +275,7 @@ export function createAIService(host: AIHost) {
       const content = result.text + (warnings.length ? `\n\n> ${t('上下文与输出说明：','Context and output notes: ')}${warnings.join(' ')}` : '');
       workspace = await host.mutateWorkspace(workspace.id, ws => {
         signal.throwIfAborted();
-        ws.conversations.find(c => c.id === request.conversationId)!.messages.push({ id: randomUUID(), role: 'assistant', content, createdAt: Date.now(), provider: config.id, model: config.model });
+        ws.conversations.find(c => c.id === request.conversationId)!.messages.push({ id: randomUUID(), role: 'assistant', content, createdAt: Date.now(), provider: config.id, model: config.model, ...origin });
         if (request.kind === 'summary') ws.summary = { content, provider: config.id, model: config.model, createdAt: Date.now() };
       });
       saved = true;
@@ -288,7 +292,7 @@ export function createAIService(host: AIHost) {
       if (partial && !saved) {
         try {
           workspace = await host.mutateWorkspace(request.workspaceId, ws => {
-            ws.conversations.find(c => c.id === request.conversationId)?.messages.push({ id: randomUUID(), role: 'assistant', content: partial + t('\n\n> 回答已中断，以上为部分内容。','\n\n> The response was interrupted; the text above is incomplete.'), createdAt: Date.now(), provider: config.id, model: config.model, interrupted: true });
+            ws.conversations.find(c => c.id === request.conversationId)?.messages.push({ id: randomUUID(), role: 'assistant', content: partial + t('\n\n> 回答已中断，以上为部分内容。','\n\n> The response was interrupted; the text above is incomplete.'), createdAt: Date.now(), provider: config.id, model: config.model, interrupted: true, ...(request.source === 'voice' ? {source:'voice' as const} : {}) });
           });
         } catch { /* A workspace may have been deleted during cancellation. */ }
       }
@@ -310,6 +314,8 @@ export function createAIService(host: AIHost) {
       if ([...active.values()].some(item => item.workspaceId === workspace.id)) throw new Error(t("此论文已有生成任务，请等待完成或先停止。","This paper already has a generation in progress. Wait for it to finish or stop it first."));
       if (!workspace.conversations.some(c => c.id === request.conversationId)) throw new Error(t("会话不存在，请重新打开论文。","The conversation does not exist. Reopen the paper."));
       if (request.kind !== 'chat' && request.kind !== 'summary') throw new Error(t("请求类型无效。","Invalid request type."));
+      if (request.source !== undefined && request.source !== 'voice') throw new Error(t("输入来源无效。","Invalid input source."));
+      if (request.voiceLocale !== undefined && (request.source !== 'voice' || !['zh-CN','en-US'].includes(request.voiceLocale))) throw new Error(t("语音语言无效。","Invalid voice language."));
       if (request.kind === 'chat' && !request.prompt.trim()) throw new Error(t("请输入问题。","Enter a question."));
       if (!request.documentIds.length || request.documentIds.some(id => !workspace.documents.some(d => d.id === id))) throw new Error(t("请选择此论文工作区中的 PDF。","Select PDFs from this paper’s workspace."));
       if (request.selection && (!request.documentIds.includes(request.selection.documentId) || !Number.isInteger(request.selection.page) || request.selection.page < 1)) throw new Error(t("选段不属于所选 PDF，或页码无效。","The passage is not from a selected PDF, or its page number is invalid."));

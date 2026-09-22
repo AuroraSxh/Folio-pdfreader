@@ -45,6 +45,38 @@ function harness(config: Settings, initial = workspace(), pages: Record<string, 
 }
 function request(id = 'request-1'): ChatRequest { return { requestId: id, workspaceId: 'paper-1', conversationId: 'conv', kind: 'chat', prompt: '正文和补充材料是否一致？', documentIds: ['main', 'sup'] }; }
 
+test('voice questions and answers share the existing conversation, paper context and persisted text', async t => {
+  const server = await mock((body, response) => {
+    assert.match(body.messages[0].content, /语音对话/);
+    assert.ok(body.messages.some((message: any) => message.content.includes('Supplement evidence')));
+    assert.equal(body.messages.at(-1).content, '请解释补充图二。');
+    answer(response, '补充图二支持正文结论。[Supplement.pdf p.1]');
+  }); t.after(server.close);
+  const h = harness(settings(server.url)); t.after(() => h.service.dispose());
+  await h.service.start({ ...request('voice-turn'), prompt: '请解释补充图二。', source: 'voice' });
+  assert.equal((await h.terminal()).type, 'done');
+  const messages = h.state().conversations[0].messages;
+  assert.deepEqual(messages.map(message => [message.role, message.source]), [['user', 'voice'], ['assistant', 'voice']]);
+  assert.equal(messages[0].content, '请解释补充图二。');
+  assert.match(messages[1].content, /补充图二支持正文结论/);
+  assert.equal(h.state().conversations.length, 1);
+  assert.equal(h.events.filter(event => event.type === 'delta').map(event => event.text).join(''), '补充图二支持正文结论。[Supplement.pdf p.1]');
+});
+
+test('voice language controls the answer without modifying the transcript or interface language', async t => {
+  const transcript='How does Figure 2 support the conclusion?';
+  const server=await mock((body,response)=>{
+    assert.match(body.messages[0].content,/voice conversation/);
+    assert.equal(body.messages.at(-1).content,transcript);
+    answer(response,'Figure 2 supports the conclusion.');
+  }); t.after(server.close);
+  const config=settings(server.url),h=harness(config); t.after(()=>h.service.dispose());
+  await h.service.start({...request('english-voice'),source:'voice',voiceLocale:'en-US',prompt:transcript});
+  assert.equal((await h.terminal()).type,'done');
+  assert.equal(h.state().conversations[0].messages[0].content,transcript);
+  assert.equal(config.language,'zh-CN');
+});
+
 test('SSE handles byte-split Chinese, CRLF, multiline data, comments and trailing frame', async () => {
   const encoded = new TextEncoder().encode(': heartbeat\r\ndata: 你好\r\ndata: 世界\r\n\r\nevent: end\ndata: 尾部');
   const response = new Response(new ReadableStream({ start(controller) { for (const byte of encoded) controller.enqueue(Uint8Array.of(byte)); controller.close(); } }));

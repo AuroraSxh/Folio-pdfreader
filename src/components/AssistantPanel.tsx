@@ -1,10 +1,13 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCheck, ChevronDown, Clipboard, Copy, FileText, FlaskConical, Highlighter, History, Lightbulb, LoaderCircle, MessageSquare, NotebookPen, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCheck, ChevronDown, Clipboard, Copy, FileText, FlaskConical, Highlighter, History, Lightbulb, LoaderCircle, MessageSquare, Mic, NotebookPen, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import type { ChatRequest, Settings, TextSelection, Workspace } from '../../shared/types';
 import { useI18n } from '../i18n';
 import { getSummaryPrompt } from '../../shared/prompts';
+import { PLATFORM } from '../platform';
+import { useVoiceConversation } from '../hooks/useVoiceConversation';
+import VoiceControls from './VoiceControls';
 import './ui-components.css';
 
 type UiNotice = { zh: string; en: string; values?: Record<string, string | number> };
@@ -16,7 +19,15 @@ interface Props {
   focusRequest?: { workspaceId: string; nonce: number };
   panelControls?: ReactNode;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
+  voiceHost?: HTMLElement | null;
+  voiceToggleRequest?: { nonce: number };
+  onVoiceActiveChange?: (active: boolean) => void;
 }
+interface VoiceSubmission {
+  locale: 'zh-CN' | 'en-US'; answer: (text: string) => void;
+  completion: Promise<void>; resolve: () => void; reject: (error: Error) => void;
+}
+type Send = (promptText: string, kind?: ChatRequest['kind'], selectionOverride?: TextSelection | null, sourceOverride?: string[], voice?: VoiceSubmission) => Promise<void>;
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 
 /** Batch SSE tokens without an idle interval. A generation guard also rejects
@@ -70,7 +81,7 @@ const MemoMarkdown = memo(function MemoMarkdown({ text, citationKey, onNavigate,
   return <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS} urlTransform={markdownURL} components={components}>{withCitations}</ReactMarkdown>;
 });
 
-export default function AssistantPanel({ workspace, settings, selection, onClearSelection, onWorkspace, onSettings, onError, onNavigate, focusRequest, panelControls, dragHandleProps }: Props) {
+export default function AssistantPanel({ workspace, settings, selection, onClearSelection, onWorkspace, onSettings, onError, onNavigate, focusRequest, panelControls, dragHandleProps, voiceHost, voiceToggleRequest, onVoiceActiveChange }: Props) {
   const { language, locale, t } = useI18n();
   const STARTERS = useMemo(() => [
   { title: t("总结这篇论文", "Summarize this paper"), detail: t("抓住问题、方法与核心发现", "Questions, methods, and key findings"), icon: Sparkles, prompt: getSummaryPrompt(language), kind: 'summary' },
@@ -94,14 +105,16 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const [clipboardSelection, setClipboardSelection] = useState<TextSelection | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [memoryType, setMemoryType] = useState('all');
-  const currentRef = useRef({ workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, t });
-  currentRef.current = { workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, t };
+  const currentRef = useRef({ workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, onSettings, t });
+  currentRef.current = { workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, onSettings, t };
   const notesRef = useRef(notes); notesRef.current = notes;
   const savedNotes = useRef(workspace.notes);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const mounted = useRef(true);
   const [streamAccumulator] = useState(() => createStreamAccumulator(text => { if (mounted.current) setStream(text); }));
   const requestRef = useRef<ChatRequest | null>(null);
+  const voiceRequestRef = useRef<(VoiceSubmission & { requestId: string; answered: boolean; started: boolean }) | null>(null);
+  const sendRef = useRef<Send>(async () => {});
   const lastRequest = useRef<ChatRequest | null>(null);
   const autoStarted = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -117,6 +130,45 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const citationKey = JSON.stringify(workspace.documents.map(doc => [doc.id, doc.name, doc.fileName]));
   const navigateCitation = useCallback((id: string, page: number) => currentRef.current.onNavigate(id, page), []);
   const markdownError = useCallback((message: string) => currentRef.current.onError(message), []);
+  const voice = useVoiceConversation({
+    locale, enabled: PLATFORM === 'darwin', toggleRequest: voiceToggleRequest, onActiveChange: onVoiceActiveChange,
+    ready: () => {
+      const current = currentRef.current, config = current.settings.providers[current.settings.activeProvider];
+      if (!config.hasKey && !config.apiKey) { current.onSettings(); return 'missing-key'; }
+      if (requestRef.current) return 'busy';
+      if (!current.workspace.documents.length) return 'no-document';
+    },
+    submit: (text, voiceLocale, answer) => {
+      let resolve!: () => void, reject!: (error: Error) => void;
+      const completion = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+      void sendRef.current(text, 'chat', undefined, undefined, { locale: voiceLocale, answer, completion, resolve, reject });
+      return completion;
+    },
+    cancelAI: async () => {
+      const pending = voiceRequestRef.current;
+      if (!pending) return;
+      if (pending.started) {
+        await window.folio.abortChat(pending.requestId);
+        await pending.completion.catch(() => {});
+      } else {
+        // The request may still be awaiting notes/new-conversation persistence.
+        // Invalidate it now; send rechecks ownership after each awaited step.
+        if (requestRef.current?.requestId === pending.requestId) {
+          requestRef.current = null;
+          if (mounted.current) { setRequestId(null); setPendingPrompt(''); setStatus(''); }
+        }
+        voiceRequestRef.current = null; pending.reject(new Error('[cancelled]'));
+      }
+    },
+  });
+  const observedConversation = useRef(workspace.activeConversationId);
+  useEffect(() => {
+    if (observedConversation.current === workspace.activeConversationId) return;
+    observedConversation.current = workspace.activeConversationId;
+    // Creating the first conversation for this voice request is not a switch.
+    if (requestRef.current?.source === 'voice' && requestRef.current.conversationId === workspace.activeConversationId) return;
+    if (voice.controller.getState().active) void voice.controller.end();
+  }, [workspace.activeConversationId, voice.controller]);
 
   const mergeSnapshot = useCallback((incoming: Workspace) => {
     const current = currentRef.current.workspace;
@@ -153,7 +205,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   }, [flushNotes]);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; streamAccumulator.dispose(); void flushNotes().catch(() => {}); if (requestRef.current) void window.folio.abortChat(requestRef.current.requestId).catch(() => {}); };
+    return () => { mounted.current = false; streamAccumulator.dispose(); void flushNotes().catch(() => {}); if (requestRef.current) void window.folio.abortChat(requestRef.current.requestId).catch(() => {}); voiceRequestRef.current?.reject(new Error('[cancelled]')); voiceRequestRef.current = null; requestRef.current = null; };
   }, [flushNotes, streamAccumulator]);
   useEffect(() => {
     if (notesRef.current === savedNotes.current && workspace.notes !== savedNotes.current) { savedNotes.current = workspace.notes; notesRef.current = workspace.notes; setNotes(workspace.notes); }
@@ -179,6 +231,13 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     if (event.workspaceId !== currentRef.current.workspace.id) return;
     if (event.type === 'memory') { if (event.workspace) mergeSnapshot(event.workspace); return; }
     if (event.requestId !== requestRef.current?.requestId) return;
+    const voiceRequest = voiceRequestRef.current?.requestId === event.requestId ? voiceRequestRef.current : null;
+    if (voiceRequest && !voiceRequest.answered && event.workspace && (event.type === 'status' || event.type === 'done')) {
+      const answer = event.workspace.conversations.find(item => item.id === requestRef.current?.conversationId)?.messages.at(-1);
+      if (answer?.role === 'assistant' && !answer.interrupted && !event.interrupted && answer.content.trim()) {
+        voiceRequest.answered = true; voiceRequest.answer(answer.content);
+      }
+    }
     if (event.type === 'delta') streamAccumulator.append(event.text ?? '');
     if (event.type === 'status') {
       setStatus(event.text || { zh: "正在阅读论文…", en: "Reading the paper…" });
@@ -192,32 +251,47 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
       if (event.type === 'error') setError(event.text || currentRef.current.t("请求失败，请检查 API 设置后重试。", "Request failed. Check your API settings and try again."));
       if (event.interrupted) setNotice({ zh: "已停止生成", en: "Generation stopped" });
       requestRef.current = null; setRequestId(null); setStatus('');
+      if (voiceRequest) {
+        voiceRequestRef.current = null;
+        if (event.type === 'error') voiceRequest.reject(new Error('[chat-failed]'));
+        else if (event.interrupted) voiceRequest.reject(new Error('[cancelled]'));
+        else voiceRequest.resolve();
+      }
     }
   }), [mergeSnapshot, streamAccumulator]);
 
-  const send = useCallback(async (promptText: string, kind: ChatRequest['kind'] = 'chat', selectionOverride?: TextSelection | null, sourceOverride?: string[]) => {
-    if (!promptText.trim() || requestRef.current) return;
+  const send: Send = useCallback(async (promptText: string, kind: ChatRequest['kind'] = 'chat', selectionOverride?: TextSelection | null, sourceOverride?: string[], voiceSubmission?: VoiceSubmission) => {
+    if (!voiceSubmission && voice.controller.getState().active) await voice.controller.pause();
+    if (!promptText.trim() || requestRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
     const current = currentRef.current;
     const active = current.settings.providers[current.settings.activeProvider];
-    if (!active.hasKey && !active.apiKey) { setError(current.t("请先在设置中填写 API Key。", "Add your API key in Settings first.")); return; }
+    if (!active.hasKey && !active.apiKey) { setError(current.t("请先在设置中填写 API Key。", "Add your API key in Settings first.")); voiceSubmission?.reject(new Error('[missing-key]')); return; }
     const id = crypto.randomUUID();
-    const preliminary: ChatRequest = { requestId: id, workspaceId: current.workspace.id, conversationId: current.workspace.activeConversationId, prompt: promptText.trim(), kind, documentIds: sourceOverride ?? (source === 'all' ? current.workspace.documents.map(doc => doc.id) : [source]), selection: selectionOverride !== undefined ? selectionOverride ?? undefined : chosenSelection ?? undefined };
+    const preliminary: ChatRequest = { requestId: id, workspaceId: current.workspace.id, conversationId: current.workspace.activeConversationId, prompt: promptText.trim(), kind, documentIds: sourceOverride ?? (source === 'all' ? current.workspace.documents.map(doc => doc.id) : [source]), selection: selectionOverride !== undefined ? selectionOverride ?? undefined : chosenSelection ?? undefined, ...(voiceSubmission ? { source: 'voice' as const, voiceLocale: voiceSubmission.locale } : {}) };
     requestRef.current = preliminary; lastRequest.current = preliminary;
+    if (voiceSubmission) voiceRequestRef.current = { ...voiceSubmission, requestId: id, answered: false, started: false };
     followStream.current = true;
     streamAccumulator.clear();
-    setRequestId(id); setPendingPrompt(promptText.trim()); setError(''); setNotice(null); setStatus({ zh: "正在准备论文上下文…", en: "Preparing paper context…" }); setInput(''); setTab('chat');
+    setRequestId(id); setPendingPrompt(promptText.trim()); setError(''); setNotice(null); setStatus({ zh: "正在准备论文上下文…", en: "Preparing paper context…" });
+    if (!voiceSubmission) { setInput(''); setTab('chat'); }
     try {
       await flushNotes();
-      if (!preliminary.conversationId) { const next = await window.folio.newConversation(current.workspace.id); preliminary.conversationId = next.activeConversationId; mergeSnapshot(next); }
+      if (!mounted.current || requestRef.current !== preliminary) return;
+      if (!preliminary.conversationId) { const next = await window.folio.newConversation(current.workspace.id); if (!mounted.current || requestRef.current !== preliminary) return; preliminary.conversationId = next.activeConversationId; mergeSnapshot(next); }
       current.onClearSelection(); setClipboardSelection(null);
+      if (voiceRequestRef.current?.requestId === id) voiceRequestRef.current.started = true;
       await window.folio.startChat(preliminary);
-    } catch (cause) { if (mounted.current) { streamAccumulator.flush(); requestRef.current = null; setRequestId(null); setStatus(''); setError(errorText(cause)); } }
-  }, [source, chosenSelection, flushNotes, mergeSnapshot, streamAccumulator]);
+    } catch (cause) {
+      if (voiceRequestRef.current?.requestId === id) { voiceRequestRef.current.reject(new Error('[chat-failed]')); voiceRequestRef.current = null; }
+      if (mounted.current && requestRef.current === preliminary) { streamAccumulator.flush(); requestRef.current = null; setRequestId(null); setStatus(''); setError(errorText(cause)); }
+    }
+  }, [source, chosenSelection, flushNotes, mergeSnapshot, streamAccumulator, voice.controller]);
+  sendRef.current = send;
 
   useEffect(() => {
     const indexed = workspace.documents.length > 0 && workspace.documents.every(doc => doc.textStatus !== undefined);
     const readable = workspace.documents.some(doc => doc.textStatus === 'ready');
-    if (!settings.autoSummary || !hasKey || workspace.summary || !indexed || !readable || autoStarted.current || requestRef.current || messages.length > 0) return;
+    if (!settings.autoSummary || !hasKey || workspace.summary || !indexed || !readable || autoStarted.current || requestRef.current || voice.controller.getState().active || messages.length > 0) return;
     autoStarted.current = true;
     void send(getSummaryPrompt(currentRef.current.settings.language), 'summary', null, workspace.documents.map(doc => doc.id));
   }, [settings.autoSummary, hasKey, workspace.summary, workspace.documents, messages.length, send, language]);
@@ -237,27 +311,28 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const stopGeneration = () => {
     const activeRequest = requestRef.current;
     if (!activeRequest) return;
+    if (activeRequest.source === 'voice') { void voice.controller.pause(); return; }
     streamAccumulator.flush();
     void window.folio.abortChat(activeRequest.requestId).catch(cause => setError(errorText(cause)));
   };
   const md = (text: string) => <MemoMarkdown text={text} citationKey={citationKey} onNavigate={navigateCitation} onError={markdownError} />;
 
-  return <aside className="fl-assistant" aria-label={t("论文阅读助手", "Paper reading assistant")}>
+  return <><aside className="fl-assistant" aria-label={t("论文阅读助手", "Paper reading assistant")}>
     <header className="fl-assistant-header" data-draggable={Boolean(dragHandleProps)} {...dragHandleProps}><span className="fl-assistant-logo"><Sparkles size={18} /></span><div><strong>{t("阅读伙伴", "Reading companion")}</strong><span>{dragHandleProps?t("拖动标题栏，自由移动", "Drag the header to move"):t("让理解，再深入一点。", "Take your understanding further.")}</span></div><span className="assistant-panel-controls"><button className="fl-icon-button" aria-label={t("AI 设置", "AI settings")} title={t("AI 设置", "AI settings")} onClick={onSettings}><Settings2 size={16} /></button>{panelControls}</span></header>
     <div className="fl-assistant-tabs" role="tablist">{[{ id: 'chat', label: t("对话", "Chat"), icon: MessageSquare }, { id: 'notes', label: t("笔记", "Notes"), icon: NotebookPen }, { id: 'memory', label: t("记忆", "Memory"), icon: Brain }].map(item => <button role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} key={item.id} onClick={() => setTab(item.id as typeof tab)}><item.icon size={14} />{item.label}{item.id === 'memory' && workspace.memories.length > 0 && <span>{workspace.memories.length}</span>}</button>)}</div>
 
     {tab === 'chat' && <>
-      <div className="fl-conversation-bar"><History size={13} /><select aria-label={t("历史对话", "Conversation history")} value={conversation?.id ?? ''} disabled={!!requestId || actionBusy} onChange={event => void runAction(async () => { const next = await window.folio.updateWorkspace(workspace.id, { activeConversationId: event.target.value }); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); })}>{!conversation && <option value="">{t("新的阅读对话", "New reading conversation")}</option>}{workspace.conversations.map(item => <option key={item.id} value={item.id}>{item.title || t("新的阅读对话", "New reading conversation")}</option>)}</select><button className="fl-icon-button" title={t("新建对话", "New conversation")} aria-label={t("新建对话", "New conversation")} disabled={!!requestId || actionBusy} onClick={() => void runAction(async () => { const next = await window.folio.newConversation(workspace.id); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); })}><Plus size={15} /></button></div>
+      <div className="fl-conversation-bar"><History size={13} /><select aria-label={t("历史对话", "Conversation history")} value={conversation?.id ?? ''} disabled={(!!requestId && requestRef.current?.source !== 'voice') || actionBusy} onChange={event => { const conversationId = event.target.value; void runAction(async () => { await voice.controller.end(); const next = await window.folio.updateWorkspace(workspace.id, { activeConversationId: conversationId }); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); }); }}>{!conversation && <option value="">{t("新的阅读对话", "New reading conversation")}</option>}{workspace.conversations.map(item => <option key={item.id} value={item.id}>{item.title || t("新的阅读对话", "New reading conversation")}</option>)}</select><button className="fl-icon-button" title={t("新建对话", "New conversation")} aria-label={t("新建对话", "New conversation")} disabled={(!!requestId && requestRef.current?.source !== 'voice') || actionBusy} onClick={() => void runAction(async () => { await voice.controller.end(); const next = await window.folio.newConversation(workspace.id); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); })}><Plus size={15} /></button></div>
       <div className="fl-chat-scroll" ref={scrollRef} onScroll={event => { const element = event.currentTarget; followStream.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }}>
         {!messages.length && !pendingPrompt && <div className="fl-chat-welcome"><div className="fl-ai-orb"><Sparkles size={24} strokeWidth={1.3} /></div><h3>{t("一起，读懂这篇论文。", "Read this paper together.")}</h3><p>{t("从一个问题开始。也可以在 PDF 中选中一段，让我们从那里深入。", "Start with a question, or select a passage in the PDF to explore it together.")}</p>{!hasKey && <button className="fl-key-cta" onClick={onSettings}><span><Settings2 size={15} /><strong>{t("连接你的 AI 服务", "Connect your AI service")}</strong><small>{t("填写 API Key 后开始对话", "Add your API key to start chatting")}</small></span><ArrowUpRight size={17} /></button>}<div className="fl-starters">{STARTERS.map(item => <button key={item.title} disabled={!!requestId} onClick={() => hasKey ? void send(item.prompt, item.kind) : onSettings()}><item.icon size={16} /><span><strong>{item.title}</strong><small>{item.detail}</small></span><ArrowUpRight size={13} /></button>)}</div><div className="fl-context-note"><FileText size={12} /> {t("结合本文与补充材料，回答附带页码。", "Answers draw on the paper and supplements, with page citations.")}</div></div>}
-        {messages.map(message => <article className={`fl-message ${message.role}`} key={message.id}>{message.role === 'assistant' && <div className="fl-message-author"><span><Sparkles size={12} /></span>Folio <small>{message.model}</small></div>}<div className={message.role === 'assistant' ? 'fl-markdown' : 'fl-user-message'}>{message.role === 'assistant' ? md(message.content) : message.content}</div>{message.interrupted && <span className="fl-interrupted">{t("已停止生成", "Generation stopped")}</span>}{message.role === 'assistant' && message.content && <div className="fl-message-actions"><button title={t("复制回复", "Copy response")} onClick={() => void copyText(message.content)}><Copy size={12} /> {t("复制", "Copy")}</button><button title={t("添加到个人笔记", "Add to personal notes")} onClick={() => addToNotes(message.content)}><NotebookPen size={12} /> {t("存为笔记", "Save to notes")}</button></div>}</article>)}
+        {messages.map(message => <article className={`fl-message ${message.role}`} key={message.id}>{message.role === 'assistant' && <div className="fl-message-author"><span><Sparkles size={12} /></span>Folio <small>{message.model}</small></div>}<div className={message.role === 'assistant' ? 'fl-markdown' : 'fl-user-message'}>{message.source === 'voice' && <span className="fl-message-voice"><Mic size={10} />{t("语音", "Voice")}</span>}{message.role === 'assistant' ? md(message.content) : message.content}</div>{message.interrupted && <span className="fl-interrupted">{t("已停止生成", "Generation stopped")}</span>}{message.role === 'assistant' && message.content && <div className="fl-message-actions"><button title={t("复制回复", "Copy response")} onClick={() => void copyText(message.content)}><Copy size={12} /> {t("复制", "Copy")}</button><button title={t("添加到个人笔记", "Add to personal notes")} onClick={() => addToNotes(message.content)}><NotebookPen size={12} /> {t("存为笔记", "Save to notes")}</button></div>}</article>)}
         {pendingPrompt && <article className="fl-message user"><div className="fl-user-message">{pendingPrompt}</div></article>}
         {(requestId || stream) && <article className="fl-message assistant"><div className="fl-message-author"><span><Sparkles size={12} /></span>Folio <small>{provider.model}</small></div>{stream ? <div className="fl-markdown fl-streaming">{md(stream)}</div> : <div className="fl-thinking"><span /><span /><span /><small>{(status ? typeof status === "string" ? status : t(status.zh, status.en, status.values) : t("正在思考…", "Thinking…"))}</small></div>}</article>}
         {error && <div className="fl-inline-error" role="alert"><span>{error}</span>{!requestId && lastRequest.current && <button onClick={() => { const previous = lastRequest.current; if (previous) void send(previous.prompt, previous.kind, previous.selection, previous.documentIds); }}><RefreshCw size={12} /> {t("重试", "Retry")}</button>}</div>}
       </div>
       <div className="fl-composer-area">
         {chosenSelection && <div className="fl-selection-context"><div><Highlighter size={12} /><span>{t('{name} · 第 {page} 页', '{name} · p. {page}', { name: chosenSelection.documentName, page: chosenSelection.page })}</span><button className="fl-icon-button" aria-label={t("清除选中文字", "Clear selected text")} onClick={() => { onClearSelection(); setClipboardSelection(null); }}><X size={12} /></button></div><blockquote>{chosenSelection.text}</blockquote></div>}
-        <div className="fl-composer"><textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label={t("向 AI 提问", "Ask AI")} placeholder={hasKey ? t("关于这篇论文，你想了解什么？", "What would you like to know about this paper?") : t("先连接 AI 服务，再开始讨论…", "Connect an AI service to start discussing…")} rows={3} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!requestId) void send(input); } if (event.key === 'Escape' && requestRef.current) stopGeneration(); }} /><div className="fl-composer-bottom"><label className="fl-source-picker"><LayersIcon /><select aria-label={t("AI 引用文档范围", "AI source documents")} value={source} onChange={event => setSource(event.target.value)}><option value="all">{t('全部文档 · {count}', 'All documents · {count}', { count: workspace.documents.length })}</option>{workspace.documents.map(doc => <option value={doc.id} key={doc.id}>{doc.role === 'main' ? t("正文", "Main") : t("补充", "Supplement")} · {doc.name}</option>)}</select><ChevronDown size={10} /></label><button className="fl-icon-button" title={t("粘贴剪贴板文字作为引用", "Paste clipboard text as a quote")} aria-label={t("粘贴引用", "Paste quote")} disabled={!!requestId} onClick={() => void runAction(async () => { const text = await navigator.clipboard.readText(); if (!text.trim()) throw new Error(t("剪贴板为空，请先复制需要讨论的文字。", "The clipboard is empty. Copy the passage you want to discuss first.")); const doc = workspace.documents.find(item => item.id === workspace.layout.leftId) ?? workspace.documents[0]; if (!doc) throw new Error(t("请先导入 PDF 文档。", "Import a PDF first.")); setClipboardSelection({ text, documentId: doc.id, documentName: doc.name, page: doc.view.page, rects: [] }); })}><Clipboard size={14} /></button>{requestId ? <button className="fl-send-button stopping" aria-label={t("停止生成", "Stop generation")} title={t("停止生成", "Stop generation")} onClick={stopGeneration}><Square size={13} fill="currentColor" /></button> : <button className="fl-send-button" aria-label={t("发送问题", "Send question")} title={t("发送 · Enter", "Send · Enter")} disabled={!input.trim() || !hasKey || actionBusy} onClick={() => void send(input)}><ArrowUp size={17} /></button>}</div></div>
+        <div className="fl-composer"><textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label={t("向 AI 提问", "Ask AI")} placeholder={hasKey ? t("关于这篇论文，你想了解什么？", "What would you like to know about this paper?") : t("先连接 AI 服务，再开始讨论…", "Connect an AI service to start discussing…")} rows={3} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!requestId) void send(input); } if (event.key === 'Escape' && requestRef.current) stopGeneration(); }} /><div className="fl-composer-bottom"><label className="fl-source-picker"><LayersIcon /><select aria-label={t("AI 引用文档范围", "AI source documents")} value={source} onChange={event => setSource(event.target.value)}><option value="all">{t('全部文档 · {count}', 'All documents · {count}', { count: workspace.documents.length })}</option>{workspace.documents.map(doc => <option value={doc.id} key={doc.id}>{doc.role === 'main' ? t("正文", "Main") : t("补充", "Supplement")} · {doc.name}</option>)}</select><ChevronDown size={10} /></label><button className="fl-icon-button" title={t("粘贴剪贴板文字作为引用", "Paste clipboard text as a quote")} aria-label={t("粘贴引用", "Paste quote")} disabled={!!requestId} onClick={() => void runAction(async () => { const text = await navigator.clipboard.readText(); if (!text.trim()) throw new Error(t("剪贴板为空，请先复制需要讨论的文字。", "The clipboard is empty. Copy the passage you want to discuss first.")); const doc = workspace.documents.find(item => item.id === workspace.layout.leftId) ?? workspace.documents[0]; if (!doc) throw new Error(t("请先导入 PDF 文档。", "Import a PDF first.")); setClipboardSelection({ text, documentId: doc.id, documentName: doc.name, page: doc.view.page, rects: [] }); })}><Clipboard size={14} /></button>{PLATFORM === 'darwin' && <button className="fl-icon-button fl-voice-entry" aria-label={voice.state.active ? t("停止语音对话", "Stop voice conversation") : t("开启语音对话", "Start voice conversation")} title={t("语音对话", "Voice conversation")} aria-pressed={voice.state.active} onClick={() => voice.state.active ? void voice.controller.end() : void voice.controller.start()}><Mic size={15} /></button>}{requestId ? <button className="fl-send-button stopping" aria-label={t("停止生成", "Stop generation")} title={t("停止生成", "Stop generation")} onClick={stopGeneration}><Square size={13} fill="currentColor" /></button> : <button className="fl-send-button" aria-label={t("发送问题", "Send question")} title={t("发送 · Enter", "Send · Enter")} disabled={!input.trim() || !hasKey || actionBusy} onClick={() => void send(input)}><ArrowUp size={17} /></button>}</div></div>
         <div className="fl-composer-caption"><button onClick={onSettings}><span className={`fl-small-dot ${hasKey ? '' : 'muted'}`} />{provider.model}{provider.thinking !== false && settings.activeProvider === 'deepseek' && t(" · 思考", " · Thinking")}</button><span>{t("↵ 发送 · ⇧↵ 换行", "↵ Send · ⇧↵ New line")}</span></div>
       </div>
     </>}
@@ -275,6 +350,6 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
 
     {tab === 'memory' && <div className="fl-memory-panel fl-panel-scroll"><div className="fl-notes-heading"><div><span className="fl-eyebrow">IDEAS THAT STAY WITH YOU</span><h3>{t("阅读，会留下痕迹。", "Keep the ideas that matter.")}</h3></div><Brain size={21} /></div><p className="fl-memory-intro">{t("对话中的发现与问题会沉淀在这里，在下一次讨论中继续生长。", "Findings and questions from your conversations stay here for your next discussion.")}</p>{!settings.autoMemory && <button className="fl-memory-off" onClick={onSettings}>{t("自动记忆当前已关闭", "Automatic memory is off")} <Settings2 size={12} /></button>}{workspace.memoryIndex && <details className="fl-memory-index"><summary><Brain size={14} /> {t("阅读记忆索引", "Reading memory index")}<ChevronDown size={12} /></summary><div className="fl-markdown">{md(workspace.memoryIndex)}</div></details>}{workspace.memories.length > 0 ? <><div className="fl-memory-filters"><button className={memoryType === 'all' ? 'active' : ''} onClick={() => setMemoryType('all')}>{t('全部 {count}', 'All {count}', { count: workspace.memories.length })}</button>{Object.entries(memoryLabels).filter(([type]) => workspace.memories.some(item => item.type === type)).map(([type, label]) => <button key={type} className={memoryType === type ? 'active' : ''} onClick={() => setMemoryType(type)}>{label}</button>)}</div><div className="fl-memory-list">{workspace.memories.filter(item => memoryType === 'all' || item.type === memoryType).map(item => <article className={`fl-memory-card ${item.type}`} key={item.id}><div><span>{memoryLabels[item.type]}</span><button className="fl-icon-button" aria-label={t("删除记忆 {title}", "Delete memory {title}", { title: item.title })} title={t("删除此条记忆", "Delete this memory")} disabled={actionBusy} onClick={() => void runAction(async () => { const next = await window.folio.deleteMemory(workspace.id, item.id); mergeSnapshot(next); })}><Trash2 size={12} /></button></div><h4>{item.title}</h4><div className="fl-markdown">{md(item.body)}</div>{item.tags.length > 0 && <footer>{item.tags.map(tag => <span key={tag}>#{tag}</span>)}</footer>}</article>)}</div></> : <div className="fl-memory-empty"><div><Brain size={30} strokeWidth={1.2} /></div><h4>{t("灵感正在酝酿", "Ideas will grow here")}</h4><p>{t("开启自动记忆，与 AI 讨论论文后，", "Enable automatic memory and discuss the paper with AI.")}<br />{t("研究发现和待解问题会逐渐积累。", "Findings and open questions will collect here.")}</p><button className="fl-button fl-secondary" onClick={() => setTab('chat')}>{t("开始一段对话", "Start a conversation")} <ArrowUpRight size={13} /></button></div>}</div>}
     {(notice || (error && tab !== 'chat')) && <div className={`fl-assistant-notice ${error && tab !== 'chat' ? 'error' : ''}`} role="status"><span>{error && tab !== 'chat' ? error : <><Check size={12} />{notice && t(notice.zh, notice.en, notice.values)}</>}</span><button className="fl-icon-button" aria-label={t("关闭提示", "Dismiss notification")} onClick={() => { setNotice(null); setError(''); }}><X size={12} /></button></div>}
-  </aside>;
+  </aside>{PLATFORM === 'darwin' && <VoiceControls host={voiceHost} state={voice.state} controller={voice.controller} onSettings={onSettings} />}</>;
 }
 function LayersIcon() { return <FileText size={12} />; }

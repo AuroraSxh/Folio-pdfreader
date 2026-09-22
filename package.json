@@ -1,6 +1,6 @@
 {
   "name": "folio-paper-reader",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A local-first academic PDF workspace with DeepSeek and Obsidian",
   "author": "Folio",
   "private": true,
@@ -20,7 +20,8 @@
     "dist:win": "npm run build && electron-builder --win --x64",
     "test:win-package": "node scripts/verify-windows.mjs",
     "test:reading": "node scripts/e2e-reading.mjs",
-    "test:locale": "node scripts/e2e-locale.mjs"
+    "test:locale": "node scripts/e2e-locale.mjs",
+    "test:voice": "node scripts/e2e-voice.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.577.0",
@@ -49,7 +50,7 @@
     "appId": "com.folio.paperreader",
     "productName": "Folio",
     "directories": {
-      "output": "release/v0.3.0"
+      "output": "release/v0.4.0"
     },
     "files": [
       "dist/**/*",
@@ -57,7 +58,8 @@
       "package.json",
       "LICENSE",
       "THIRD_PARTY_LICENSES.txt",
-      "!node_modules/**/*"
+      "!node_modules/**/*",
+      "!dist-electron/apple-speech/**/*"
     ],
     "asar": true,
     "mac": {
@@ -75,8 +77,21 @@
         {
           "from": "node_modules/electron/dist/LICENSES.chromium.html",
           "to": "LICENSES.chromium.html"
+        },
+        {
+          "from": "dist-electron/apple-speech",
+          "to": "apple-speech",
+          "filter": [
+            "Folio Speech.app/**/*"
+          ]
         }
-      ]
+      ],
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Folio uses the microphone only when you start a voice conversation. 点击开始语音对话后，Folio 才会使用麦克风。",
+        "NSSpeechRecognitionUsageDescription": "Folio uses Apple speech recognition to turn your spoken questions into chat messages. Folio 使用 Apple 语音识别将你的提问转换为对话文字。"
+      },
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
       "title": "Folio",
