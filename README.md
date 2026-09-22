@@ -22,7 +22,7 @@ A desktop PDF reader for academic papers. Keep a paper and its supplements in on
 | Platform | Version | Download |
 | --- | --- | --- |
 | macOS 13+, Apple Silicon / Intel | 0.4.1 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.4.1/Folio-0.4.1-mac-universal.dmg) |
-| Windows 10 / 11, x64 | 0.3.0 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.3.0/Folio-0.3.0-windows-x64-portable.exe) |
+| Windows 10 / 11, x64 | 0.4.1 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.4.1/Folio-0.4.1-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.4.1/Folio-0.4.1-windows-x64-portable.exe) |
 
 On Mac, open the DMG and drag Folio into Applications. To update, quit the old version and replace it. Your papers and notes are kept.
 
@@ -34,7 +34,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
-| [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | Better mixed-language speech and scientific term pronunciation; shorter spoken citations, separate Chinese/English voices, and voice previews. Voice stays off until started. Includes a setup tutorial and deletion of individual question-and-answer exchanges. |
+| [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | Better mixed-language speech and scientific term pronunciation; shorter spoken citations, separate Chinese/English voices, and voice previews. Voice stays off until started. Includes a setup tutorial and deletion of individual question-and-answer exchanges. Windows installer and portable builds updated. |
 | [0.4.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.0) | Mac voice conversations using Apple speech recognition and system voices, with a shared text history and controls that stay available when the AI panel is hidden. |
 | [0.3.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.3.0) | English and Chinese UI, menus, and note exports; GitHub update checks and verified installer downloads. |
 | [0.2.2](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.2.2) | Add comments to selected text from the context menu; edit or delete annotations, with undo. First GitHub release. |

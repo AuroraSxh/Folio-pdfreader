@@ -1,0 +1,25 @@
+Folio 0.4.1 · Windows 10 / 11 x64
+
+中文
+安装版：运行 Folio-0.4.1-windows-x64-setup.exe，按向导完成安装。
+免安装版：运行 Folio-0.4.1-windows-x64-portable.exe，无需安装向导；首次启动会临时解包。
+更新前退出旧版。安装版覆盖安装；免安装版改用新的 EXE。
+论文、笔记和设置保存在用户目录，保留原有数据；免安装不代表数据自动跟随 EXE。
+AI 需要自行填写 API Key。离线阅读无需 Key，本包不包含密钥。
+提问或回答下的「删除」会移除本轮问答和关联自动记忆，保留个人笔记。旧版记忆如有残留，可在「记忆」中另行删除。
+Apple 语音功能目前仅适用于 Mac。Windows 本版使用文字 AI 对话。
+本包未使用 Windows 代码签名证书；请从官方 GitHub Releases 下载。
+本版在 Mac 上交叉构建，已做静态打包检查，尚未通过 Windows 实机安装和运行验证。
+
+English
+Installer: run Folio-0.4.1-windows-x64-setup.exe and follow the wizard.
+Portable: run Folio-0.4.1-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
+Quit the old app before updating. Install over the previous version, or use the new portable EXE.
+Papers, notes, and settings stay in your user folders. Portable does not mean the library travels with the EXE.
+AI requires your own API key. Offline reading does not. No key is bundled.
+Delete under a question or answer removes that exchange and linked automatic memories; personal notes are kept. Remove any older unlinked memories separately in Memory.
+Apple voice features are Mac-only. This Windows build supports text-based AI conversations.
+This build is unsigned. Download it from the official GitHub Releases page.
+Cross-built on Mac and statically verified; installation and runtime have not been tested on Windows hardware or a VM.
+
+Downloads / 下载：https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1
