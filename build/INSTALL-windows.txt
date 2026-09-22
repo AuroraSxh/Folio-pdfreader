@@ -1,25 +1,37 @@
-Folio 0.4.1 · Windows 10 / 11 x64
+Pairleaf 0.5.0（原 Folio）· Windows 10 / 11 x64
 
 中文
-安装版：运行 Folio-0.4.1-windows-x64-setup.exe，按向导完成安装。
-免安装版：运行 Folio-0.4.1-windows-x64-portable.exe，无需安装向导；首次启动会临时解包。
-更新前退出旧版。安装版覆盖安装；免安装版改用新的 EXE。
+安装版：运行 Pairleaf-0.5.0-windows-x64-setup.exe，按向导完成安装。
+免安装版：运行 Pairleaf-0.5.0-windows-x64-portable.exe，无需安装向导；首次启动会临时解包。
+更新前退出 Folio 或 Pairleaf。安装版按向导更新；免安装版改用新的 EXE。不要同时运行新旧版本编辑同一库。
 论文、笔记和设置保存在用户目录，保留原有数据；免安装不代表数据自动跟随 EXE。
+默认论文库仍是「文档/Folio Library」，设置仍在 %APPDATA%\Folio；这些旧名称有意保留，自定义库路径继续使用。请不要为了更名删除数据目录。
 AI 需要自行填写 API Key。离线阅读无需 Key，本包不包含密钥。
 提问或回答下的「删除」会移除本轮问答和关联自动记忆，保留个人笔记。旧版记忆如有残留，可在「记忆」中另行删除。
-Apple 语音功能目前仅适用于 Mac。Windows 本版使用文字 AI 对话。
+Windows 系统语音为实验性功能，使用本机 System.Speech / SAPI 识别与朗读，无需额外语音 Key，不上传录音。转写文字与论文上下文仍会发送给所选 AI 服务。
+语音默认关闭，重启不会恢复。点击「语音」只打开选项，「开始聆听」才收音；试听无需 AI Key，也不收音、不写入聊天。
+需要兼容的本地识别引擎和音色；部分新版 Windows 11 没有可用的 SAPI 听写引擎，安装语言包不保证解决。讲述人的自然音色也不保证可供应用使用。
+识别不可用时可继续文字输入，有可用音色时仍能试听；不会自动转到云端识别。
+语音组件需要 .NET Framework 4.8 或兼容的 4.8.1，较新 Windows 通常已包含；安装版不内置 .NET 10 SDK，用户无需安装开发 SDK。
 本包未使用 Windows 代码签名证书；请从官方 GitHub Releases 下载。
-本版在 Mac 上交叉构建，已做静态打包检查，尚未通过 Windows 实机安装和运行验证。
+尚未经过 Windows 实机或虚拟机安装、收音、朗读和资源占用验证。Mac 上的交叉构建或模拟界面检查不能代替 Windows 实机测试。
 
 English
-Installer: run Folio-0.4.1-windows-x64-setup.exe and follow the wizard.
-Portable: run Folio-0.4.1-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
-Quit the old app before updating. Install over the previous version, or use the new portable EXE.
+Installer: run Pairleaf-0.5.0-windows-x64-setup.exe and follow the wizard.
+Portable: run Pairleaf-0.5.0-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
+Quit Folio or Pairleaf before updating. Follow the installer, or use the new portable EXE. Do not run both versions against the same library.
 Papers, notes, and settings stay in your user folders. Portable does not mean the library travels with the EXE.
+The default library remains Documents/Folio Library, and settings stay in %APPDATA%\Folio. These names are intentional; custom library paths are preserved. Do not delete data folders because of the rename.
 AI requires your own API key. Offline reading does not. No key is bundled.
 Delete under a question or answer removes that exchange and linked automatic memories; personal notes are kept. Remove any older unlinked memories separately in Memory.
-Apple voice features are Mac-only. This Windows build supports text-based AI conversations.
+Windows system speech is experimental. It uses local System.Speech / SAPI for recognition and reading, needs no extra speech key, and never uploads recordings. Transcripts and paper context still go to your selected AI provider.
+Voice is off by default and never resumes after restart. Voice opens options; Start listening uses the microphone. Preview needs no key, microphone, or chat entry.
+Compatible local engines and voices are required. Some newer Windows 11 systems lack a usable SAPI dictation engine; language downloads do not guarantee a fix. Narrator natural voices are not necessarily available to the app.
+If recognition is unavailable, continue typing; installed voices may still be previewed. There is no automatic cloud recognition fallback.
+The speech helper uses .NET Framework 4.8 or compatible 4.8.1, normally included with recent Windows. The app does not bundle the .NET 10 SDK; users do not need that development SDK.
 This build is unsigned. Download it from the official GitHub Releases page.
-Cross-built on Mac and statically verified; installation and runtime have not been tested on Windows hardware or a VM.
+Windows hardware/VM installation, microphone capture, playback, and resource use have not been tested. Cross-builds and simulated UI checks on Mac do not replace Windows device testing.
 
-Downloads / 下载：https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1
+Downloads / 下载：https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.0
+Voice guide / 语音教程：https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/windows-voice.md
+Migration / 更名说明：https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md

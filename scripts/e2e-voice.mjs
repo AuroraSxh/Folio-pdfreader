@@ -75,7 +75,7 @@ try{
   await help.locator('summary').filter({hasText:'语音使用教程'}).click();
   assert.match(await help.innerText(),/语音默认关闭/);
   assert.match(await help.innerText(),/系统声音.*下拉菜单/);
-  assert.match(await help.innerText(),/更改系统默认声音不会覆盖 Folio 已保存的选择/);
+  assert.match(await help.innerText(),/更改系统默认声音不会覆盖 Pairleaf 已保存的选择/);
   assert.deepEqual((await mockState()).calls,[]);
   await page.screenshot({path:path.join(output,'voice-guide-zh.png')});
   await help.getByRole('button',{name:'关闭',exact:true}).click();
@@ -204,7 +204,7 @@ try{
   const englishHelp=page.getByRole('dialog',{name:'Reading tips',exact:true});
   await englishHelp.locator('summary').filter({hasText:'Voice tutorial'}).click();
   assert.match(await englishHelp.innerText(),/Voice is off by default/);
-  assert.match(await englishHelp.innerText(),/Changing the system default does not replace saved Folio choices/);
+  assert.match(await englishHelp.innerText(),/Changing the system default does not replace saved Pairleaf choices/);
   await page.screenshot({path:path.join(output,'voice-guide-en.png')});
   assert.equal((await mockState()).listening,null);
   pass('The offline voice tutorial follows the English interface language');

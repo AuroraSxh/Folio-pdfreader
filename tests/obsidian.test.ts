@@ -97,7 +97,7 @@ test('English Markdown localizes generated headings and labels while preserving 
   for (const label of ['Findings', 'Interpretations', 'Open questions', 'Cross-paper links', 'Personal interests']) assert.ok(en.includes(`### ${label}\n`));
   assert.match(en, /Main text: \[正文文件.pdf\]/); assert.match(en, /Supplement: \[补充文件.pdf\]/); assert.match(en, /2 pages/); assert.match(en, /Page count unknown/);
   for (const kind of ['Highlight', 'Underline', 'Strikeout']) assert.ok(en.includes(`Page 2 · ${kind}**: 我的中文批注`));
-  assert.match(en, /#### Me ·/); assert.match(en, /#### Assistant · .*\(interrupted\)/); assert.match(en, /Topics: immunity/); assert.match(en, /Exported by Folio/);
+  assert.match(en, /#### Me ·/); assert.match(en, /#### Assistant · .*\(interrupted\)/); assert.match(en, /Topics: immunity/); assert.match(en, /Exported by Pairleaf/);
   for (const content of [ws.title, ws.notes, ws.summary!.content, ws.memoryIndex, '中文发现', '中文证据', '不能翻译这段原文', '我的中文批注', '用户命名对话', '原始用户提问', '原始助手回答']) assert.ok(en.includes(content));
   assert.deepEqual(ws, original); assert.equal((en.match(/folio:generated:start/g) || []).length, 1); assert.match(en, /<!-- folio:generated:end -->/);
 });

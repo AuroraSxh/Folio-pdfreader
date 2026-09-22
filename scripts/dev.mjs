@@ -1,4 +1,5 @@
 await import('./build-apple-speech.mjs');
+if (process.platform === 'win32') await import('./build-windows-speech.mjs');
 import { context } from 'esbuild';
 import { createServer } from 'vite';
 import { spawn } from 'node:child_process';

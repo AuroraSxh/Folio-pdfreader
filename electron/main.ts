@@ -15,8 +15,11 @@ import { isApplicationURL, pdfDialogOptions, pdfPathsFromArguments, sameLocalPat
 import type { ChatRequest, DocumentIndex, PaperDocument, Settings, Workspace, ViewState } from '../shared/types';
 import { translate } from '../shared/i18n';
 
+// Keep the legacy internal identity: Electron uses it for the macOS Safe
+// Storage keychain service. Visible product branding is Pairleaf.
 app.setName('Folio');
-if(process.env.FOLIO_USER_DATA)app.setPath('userData',process.env.FOLIO_USER_DATA);
+app.setPath('userData',process.env.FOLIO_USER_DATA??path.join(app.getPath('appData'),'Folio'));
+app.setAboutPanelOptions({applicationName:'Pairleaf'});
 let window:BrowserWindow|null=null;
 let library:LibraryStore;
 let settings:SettingsStore;
@@ -27,11 +30,13 @@ let voiceShutdown:Promise<void>=Promise.resolve();
 let autoUpdateTimer:ReturnType<typeof setTimeout>|undefined;
 const t=(zh:string,en:string,values?:Record<string,string|number>)=>translate(settings?.getLanguage()??'zh-CN',zh,en,values);
 const pendingFiles:string[]=[];
-const primaryInstance=process.platform!=='win32'||app.requestSingleInstanceLock();
+const primaryInstance=app.requestSingleInstanceLock();
 if(!primaryInstance)app.quit();
-if(process.platform==='win32'&&primaryInstance){
-  app.setAppUserModelId('com.folio.paperreader');
-  pendingFiles.push(...pdfPathsFromArguments(process.argv.slice(1),process.cwd()));
+if(primaryInstance){
+  if(process.platform==='win32'){
+    app.setAppUserModelId('com.folio.paperreader');
+    pendingFiles.push(...pdfPathsFromArguments(process.argv.slice(1),process.cwd()));
+  }
   app.on('second-instance',(_event,argv,cwd)=>{
     pendingFiles.push(...pdfPathsFromArguments(argv.slice(1),cwd));
     if(!initialized)return;
@@ -139,7 +144,7 @@ async function voiceService(){
   let pending:Promise<void>;
   do { pending=voiceShutdown;await pending; } while(pending!==voiceShutdown);
   return voice??=createVoiceService({platform:process.platform,
-    helperPath:path.join(app.isPackaged?process.resourcesPath:__dirname,'apple-speech','Folio Speech.app','Contents','MacOS','FolioSpeech'),
+    helperPath:process.platform==='win32' ? path.join(app.isPackaged?process.resourcesPath:__dirname,'windows-speech','PairleafSpeech.exe') : path.join(app.isPackaged?process.resourcesPath:__dirname,'apple-speech','Folio Speech.app','Contents','MacOS','FolioSpeech'),
     emit:event=>emit('voice',event)});
 }
 async function stopVoice(){
@@ -176,9 +181,9 @@ function registerIPC(){
   handle('create-workspace',async(paths?:string[])=>{const files=paths??await choosePdfs();return files?.length?createWorkspaceFromPaths(files):null;});
   handle('import-documents',async(id:string,paths?:string[])=>{library.get(id);const files=paths??await choosePdfs();return files?.length?library.addDocuments(id,files):null;});
   handle('demo',async()=>{
-    const existing=library.list().find(w=>(w.tags.includes('Folio 示例')||w.tags.includes('Folio example')));if(existing)return existing;
+    const existing=library.list().find(w=>(['Folio 示例','Folio example','Pairleaf 示例','Pairleaf example'].some(tag=>w.tags.includes(tag))));if(existing)return existing;
     const dir=await fs.mkdtemp(path.join(app.getPath('temp'),'folio-demo-'));
-    try{const paths=await writeDemo(dir);const ws=await createWorkspaceFromPaths(paths);return await library.patch(ws.id,{title:'A workspace for a closer reading',authors:'Folio Studio',journal:t('交互阅读示例 · 非真实论文','Interactive reading example · not a real paper'),tags:[t('Folio 示例','Folio example'),t('阅读指南','Reading guide')],notes:t('## 我的阅读笔记\n\n这是一篇用于体验阅读功能的示例文档，数据均为演示内容。\n\n- 左侧阅读正文，右侧对照补充材料。\n- 选中文字后可高亮、添加批注或询问 AI。\n- 打开设置，填写自己的 DeepSeek API Key 开始辅助阅读。\n','## My reading notes\n\nThis sample document demonstrates reading features. All data is illustrative.\n\n- Read the main text on the left and compare supplementary files on the right.\n- Select text to highlight, annotate or ask AI.\n- Open Settings and enter your own DeepSeek API key to start assisted reading.\n')});}
+    try{const paths=await writeDemo(dir);const ws=await createWorkspaceFromPaths(paths);return await library.patch(ws.id,{title:'A workspace for a closer reading',authors:'Pairleaf Studio',journal:t('交互阅读示例 · 非真实论文','Interactive reading example · not a real paper'),tags:[t('Pairleaf 示例','Pairleaf example'),t('阅读指南','Reading guide')],notes:t('## 我的阅读笔记\n\n这是一篇用于体验阅读功能的示例文档，数据均为演示内容。\n\n- 左侧阅读正文，右侧对照补充材料。\n- 选中文字后可高亮、添加批注或询问 AI。\n- 打开设置，填写自己的 DeepSeek API Key 开始辅助阅读。\n','## My reading notes\n\nThis sample document demonstrates reading features. All data is illustrative.\n\n- Read the main text on the left and compare supplementary files on the right.\n- Select text to highlight, annotate or ask AI.\n- Open Settings and enter your own DeepSeek API key to start assisted reading.\n')});}
     finally{await fs.rm(dir,{recursive:true,force:true});}
   });
   handle('update-workspace',(id:string,patch:Partial<Workspace>)=>library.patch(id,patch));
@@ -210,7 +215,7 @@ function registerIPC(){
   handle('export-pdf',async(id:string,docId:string)=>{
     await library.flush();
     const doc=library.get(id).documents.find(d=>d.id===docId);if(!doc)throw new Error(t("找不到 PDF","PDF not found."));
-    const file=await saveFile(t("导出包含目录与批注的 PDF 副本","Export a PDF copy with bookmarks and annotations"),`${safeFilename(doc.name.replace(/\.pdf$/i,''))} - Folio.pdf`,'pdf');if(!file)return null;
+    const file=await saveFile(t("导出包含目录与批注的 PDF 副本","Export a PDF copy with bookmarks and annotations"),`${safeFilename(doc.name.replace(/\.pdf$/i,''))} - Pairleaf.pdf`,'pdf');if(!file)return null;
     const original=library.documentPath(id,docId);
     const destination=await fs.realpath(file).catch(()=>path.resolve(file));
     if(sameLocalPath(destination,await fs.realpath(original)))throw new Error(t("请另存为一个新文件，以保留原件","Save to a new file to preserve the original."));
@@ -256,9 +261,9 @@ function registerIPC(){
     const file=await saveFile(t("导出 Markdown 阅读笔记","Export Markdown reading notes"),`${safeFilename(ws.title)}.md`,'md');if(!file)return null;
     await atomicWrite(file,renderMarkdown(ws,undefined,library.root,settings.getLanguage()));return {path:file};
   });
-  handle('backup',async()=>{const file=await saveFile(t("备份完整论文库（包含已移除文章）","Back up the full library, including removed papers"),`Folio-backup-${new Date().toISOString().slice(0,10)}.zip`,'zip');if(!file)return null;await flushRenderer();await atomicWrite(file,await library.archive());return {path:file};});
+  handle('backup',async()=>{const file=await saveFile(t("备份完整论文库（包含已移除文章）","Back up the full library, including removed papers"),`Pairleaf-backup-${new Date().toISOString().slice(0,10)}.zip`,'zip');if(!file)return null;await flushRenderer();await atomicWrite(file,await library.archive());return {path:file};});
   handle('restore',async()=>{
-    const result=await dialog.showOpenDialog(window!,{title:t("合并恢复 Folio 备份（已存在的文章保留）","Merge a Folio backup (existing papers are kept)"),properties:['openFile'],filters:[{name:t("Folio 备份","Folio backup"),extensions:['zip']}]});if(result.canceled)return null;
+    const result=await dialog.showOpenDialog(window!,{title:t("合并恢复 Pairleaf / Folio 备份（已存在的文章保留）","Merge a Pairleaf / Folio backup (existing papers are kept)"),properties:['openFile'],filters:[{name:t("Pairleaf / Folio 备份","Pairleaf / Folio backup"),extensions:['zip']}]});if(result.canceled)return null;
     return {count:await library.restore(await fs.readFile(result.filePaths[0]))};
   });
   handle('import-legacy',async()=>{
@@ -287,7 +292,7 @@ function makeMenu(){
     catch(error){if(window)await dialog.showMessageBox(window,{type:'error',message:t("无法导入文章文件夹","Could not import the paper folder"),detail:localizeBackendError(error)});}
   };
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    {label:'Folio',submenu:[{label:t("关于 Folio","About Folio"),role:'about'},{type:'separator'},{label:t("设置…","Settings…"),accelerator:'CmdOrCtrl+,',click:command('settings')},{label:t('检查更新…','Check for Updates…'),click:()=>{emit('command','updates');void updater.check(true);}},{type:'separator'},{label:t("隐藏 Folio","Hide Folio"),role:'hide'},{label:t("隐藏其他应用","Hide Others"),role:'hideOthers'},{label:t("显示全部","Show All"),role:'unhide'},{type:'separator'},{label:t("退出 Folio","Quit Folio"),role:'quit'}]},
+    {label:'Pairleaf',submenu:[{label:t("关于 Pairleaf","About Pairleaf"),role:'about'},{type:'separator'},{label:t("设置…","Settings…"),accelerator:'CmdOrCtrl+,',click:command('settings')},{label:t('检查更新…','Check for Updates…'),click:()=>{emit('command','updates');void updater.check(true);}},{type:'separator'},{label:t("隐藏 Pairleaf","Hide Pairleaf"),role:'hide'},{label:t("隐藏其他应用","Hide Others"),role:'hideOthers'},{label:t("显示全部","Show All"),role:'unhide'},{type:'separator'},{label:t("退出 Pairleaf","Quit Pairleaf"),role:'quit'}]},
     {label:t("文件","File"),submenu:[{label:t("导入论文…","Import paper…"),accelerator:'CmdOrCtrl+O',click:command('import')},{label:t("导入文章文件夹…","Import paper folder…"),click:()=>void importFolder()},{label:t("添加补充材料…","Add supplementary files…"),accelerator:'CmdOrCtrl+Shift+O',click:command('supplement')},{label:t("返回论文库","Back to library"),accelerator:'CmdOrCtrl+L',click:command('library')},{type:'separator'},{label:t("导出阅读笔记…","Export reading notes…"),accelerator:'CmdOrCtrl+Shift+E',click:command('export')},{label:t("关闭窗口","Close Window"),role:'close'}]},
     {label:t("编辑","Edit"),submenu:[{label:t("撤销","Undo"),accelerator:'CmdOrCtrl+Z',click:command('undo')},{label:t("重做","Redo"),accelerator:'CmdOrCtrl+Shift+Z',click:command('redo')},{type:'separator'},{label:t("剪切","Cut"),role:'cut'},{label:t("复制","Copy"),role:'copy'},{label:t("粘贴","Paste"),role:'paste'},{label:t("全选","Select All"),role:'selectAll'}]},
     {label:t("视图","View"),submenu:[{label:t("专注阅读","Focus reading"),accelerator:'CmdOrCtrl+Shift+F',click:command('focus-reading')},{type:'separator'},{label:t("切换分栏","Toggle split view"),accelerator:'CmdOrCtrl+\\',click:command('split')},{label:t("纵向分割（左右）","Split side by side"),click:command('split-vertical')},{label:t("横向分割（上下）","Split top and bottom"),click:command('split-horizontal')},{label:t("取消分割","Close split view"),click:command('split-none')},{type:'separator'},{label:t("显示 / 隐藏助手","Show / hide assistant"),accelerator:'CmdOrCtrl+J',click:command('assistant')},{label:t("切换全屏","Toggle Full Screen"),role:'togglefullscreen'},...(devURL?[{label:t("开发者工具","Developer Tools"),role:'toggleDevTools' as const}]:[])]},
@@ -303,7 +308,7 @@ async function openPending(){
 }
 async function createWindow(){
   windowCanClose=false;rendererReady=false;
-  window=new BrowserWindow({width:1540,height:990,minWidth:1000,minHeight:660,title:'Folio',backgroundColor:'#f6f5f1',...(process.platform==='darwin'?{titleBarStyle:'hiddenInset' as const,trafficLightPosition:{x:18,y:18}}:{}),show:false,
+  window=new BrowserWindow({width:1540,height:990,minWidth:1000,minHeight:660,title:'Pairleaf',backgroundColor:'#f6f5f1',...(process.platform==='darwin'?{titleBarStyle:'hiddenInset' as const,trafficLightPosition:{x:18,y:18}}:{}),show:false,
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,spellcheck:false}});
   window.webContents.setWindowOpenHandler(({url})=>{if(/^https?:/.test(url))void shell.openExternal(url);return {action:'deny'};});
   window.webContents.on('will-navigate',(event,url)=>{if(isApplicationURL(url,appFile,devURL))return;event.preventDefault();if(/^https?:/.test(url))void shell.openExternal(url);});
@@ -331,7 +336,7 @@ app.on('before-quit',event=>{
 });
 
 if(primaryInstance)void app.whenReady().then(async()=>{
-  await logEvent(`starting Folio ${app.getVersion()} / Electron ${process.versions.electron} / ${process.arch}`);
+  await logEvent(`starting Pairleaf ${app.getVersion()} / Electron ${process.versions.electron} / ${process.arch}`);
   const root=process.env.FOLIO_USER_DATA?path.join(app.getPath('userData'),'Library'):path.join(app.getPath('documents'),'Folio Library');
   settings=new SettingsStore(app.getPath('userData'),root);await settings.init();library=new LibraryStore(root);await library.init();
   ai=createAIService({getWorkspace:id=>library.get(id),listWorkspaces:()=>library.list(),getSettings:()=>settings.get(),getDocumentPages:(id,doc)=>library.pages(id,doc),mutateWorkspace:(id,fn)=>library.mutate(id,fn),emit:event=>emit('chat',event)});
@@ -344,4 +349,4 @@ if(primaryInstance)void app.whenReady().then(async()=>{
   scheduleUpdateCheck();
   await logEvent('ready');
   if(library.loadWarnings.length)await dialog.showMessageBox(window!,{type:'warning',message:t("部分工作区未能读取，文件已保留","Some workspaces could not be read; their files have been kept"),detail:library.loadWarnings.map(localizeBackendError).join('\n')});
-}).catch(async error=>{await logEvent(`startup-error ${error instanceof Error?error.stack:String(error)}`);dialog.showErrorBox(t("Folio 启动失败","Folio could not start"),`${localizeBackendError(error)}\n\n${t('诊断日志：','Diagnostic log: ')}${startupLog}`);app.quit();});
+}).catch(async error=>{await logEvent(`startup-error ${error instanceof Error?error.stack:String(error)}`);dialog.showErrorBox(t("Pairleaf 启动失败","Pairleaf could not start"),`${localizeBackendError(error)}\n\n${t('诊断日志：','Diagnostic log: ')}${startupLog}`);app.quit();});

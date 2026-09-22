@@ -87,6 +87,96 @@ test('Mac universal and Windows setup/portable names are platform-specific', () 
   assert.equal(updateAssetName('0.3.0', 'win32', 'arm64'), undefined);
   assert.equal(updateAssetName('0.3.0', 'linux', 'x64'), undefined);
   assert.throws(() => updateAssetName('0.3.0-beta', 'darwin', 'arm64'));
+  for (const version of ['0.4.0', '0.4.1', '0.4.999']) assert.equal(updateAssetName(version, 'darwin', 'arm64'), `Folio-${version}-mac-universal.dmg`);
+  for (const version of ['0.5.0', '0.5.1', '1.0.0']) {
+    assert.equal(updateAssetName(version, 'darwin', 'arm64'), `Pairleaf-${version}-mac-universal.dmg`);
+    assert.equal(updateAssetName(version, 'darwin', 'x64'), `Pairleaf-${version}-mac-universal.dmg`);
+    assert.equal(updateAssetName(version, 'win32', 'x64'), `Pairleaf-${version}-windows-x64-setup.exe`);
+    assert.equal(updateAssetName(version, 'win32', 'x64', true), `Pairleaf-${version}-windows-x64-portable.exe`);
+  }
+});
+
+function legacyAlias(asset: Release['assets'][number], id = asset.id + 100): Release['assets'][number] {
+  const name = asset.name.replace(/^Pairleaf-/, 'Folio-');
+  return { ...asset, id, name, url: `https://api.github.com/repos/AuroraSxh/Folio-pdfreader/releases/assets/${id}`,
+    browser_download_url: asset.browser_download_url.slice(0, asset.browser_download_url.lastIndexOf('/') + 1) + encodeURIComponent(name) };
+}
+
+test('Pairleaf canonical assets and exact Folio compatibility aliases download on all supported targets', async t => {
+  for (const [platform, arch, portable, index] of [['darwin', 'arm64', false, 0], ['darwin', 'x64', false, 0], ['win32', 'x64', false, 1], ['win32', 'x64', true, 2]] as const) {
+    for (const layout of ['canonical', 'legacy', 'both'] as const) {
+      const raw = release('0.5.0'), expected = raw.assets[index].name;
+      const aliases = raw.assets.map(asset => legacyAlias(asset));
+      if (layout === 'legacy') raw.assets = aliases;
+      if (layout === 'both') raw.assets = [...aliases, ...raw.assets]; // Order cannot override canonical preference.
+      const f = await fixture(t, { raw, platform, arch, portable, version: '0.4.1' });
+      const status = await f.service.check();
+      const name = layout === 'legacy' ? expected.replace(/^Pairleaf-/, 'Folio-') : expected;
+      assert.equal(status.release?.assetName, name);
+      assert.equal(status.release?.downloadable, true);
+      assert.equal((await f.service.download()).phase, 'downloaded');
+      assert.equal(f.calls.at(-1), `${REPO}/releases/download/v0.5.0/${name}`);
+      assert.deepEqual(await fs.readFile(path.join(f.directory, name)), CONTENT);
+      assert.equal(f.opened.length, 0);
+    }
+  }
+});
+
+test('pre-rename releases retain Folio names and are never offered as a downgrade to Pairleaf', async t => {
+  const raw = release('0.4.1');
+  const upgrading = await fixture(t, { raw, version: '0.4.0' });
+  assert.equal((await upgrading.service.check()).release?.assetName, 'Folio-0.4.1-mac-universal.dmg');
+  assert.equal((await upgrading.service.download()).phase, 'downloaded');
+  const newer = await fixture(t, { raw, version: '0.5.0' });
+  assert.equal((await newer.service.check()).phase, 'up-to-date');
+  assert.equal((await newer.service.download()).error, 'not-ready');
+  assert.equal(newer.calls.length, 1);
+  assert.equal(newer.opened.length, 0);
+});
+
+test('rename compatibility never accepts duplicate assets, other versions or canonical integrity bypasses', async t => {
+  for (const duplicate of ['canonical', 'legacy', 'legacy-with-canonical'] as const) {
+    const raw = release('0.5.0'), canonical = raw.assets[0], alias = legacyAlias(canonical);
+    raw.assets = duplicate === 'canonical' ? [canonical, { ...canonical, id: 2 }]
+      : duplicate === 'legacy' ? [alias, { ...alias, id: 3 }] : [canonical, alias, { ...alias, id: 4 }];
+    const f = await fixture(t, { raw });
+    assert.equal((await f.service.check()).error, 'invalid-release');
+    assert.equal((await f.service.install()).error, 'not-ready');
+    assert.equal(f.calls.length, 1);
+  }
+  for (const layout of ['canonical', 'legacy', 'both'] as const) {
+    const raw = release('0.5.0'), canonical = raw.assets[0], alias = legacyAlias(canonical);
+    const selected = layout === 'legacy' ? alias : canonical;
+    selected.digest = '';
+    raw.assets = layout === 'both' ? [canonical, alias] : [selected];
+    const f = await fixture(t, { raw });
+    const status = await f.service.check();
+    assert.equal(status.error, 'missing-digest');
+    assert.equal(status.release?.downloadable, false);
+    assert.equal((await f.service.download()).error, 'missing-digest');
+    assert.equal(f.calls.length, 1, 'A digest-less canonical never falls back to an otherwise valid legacy alias');
+    assert.equal(f.opened.length, 0);
+  }
+  for (const layout of ['canonical', 'legacy'] as const) {
+    for (const badURL of ['tag', 'name', 'repository', 'http'] as const) {
+      const raw = release('0.5.0');
+      const asset = layout === 'legacy' ? legacyAlias(raw.assets[0]) : raw.assets[0];
+      if (badURL === 'tag') asset.browser_download_url = asset.browser_download_url.replace('/v0.5.0/', '/v0.4.1/');
+      if (badURL === 'name') asset.browser_download_url = asset.browser_download_url.replace(/(?:Pairleaf|Folio)-0.5.0/, 'Folio-0.4.1');
+      if (badURL === 'repository') asset.browser_download_url = asset.browser_download_url.replace('/AuroraSxh/Folio-pdfreader/', '/Another/Project/');
+      if (badURL === 'http') asset.browser_download_url = asset.browser_download_url.replace('https:', 'http:');
+      raw.assets = [asset];
+      const f = await fixture(t, { raw });
+      assert.equal((await f.service.check()).error, 'invalid-url');
+      assert.equal((await f.service.download()).error, 'invalid-url');
+      assert.equal(f.calls.length, 1);
+    }
+  }
+  const oldAlias = release('0.5.0'); oldAlias.assets = release('0.4.1').assets;
+  assert.equal((await (await fixture(t, { raw: oldAlias })).service.check()).error, 'missing-asset');
+  const oldRelease = release('0.4.1');
+  oldRelease.assets = oldRelease.assets.map(asset => ({ ...asset, name: asset.name.replace(/^Folio-/, 'Pairleaf-') }));
+  assert.equal((await (await fixture(t, { raw: oldRelease })).service.check()).error, 'missing-asset');
 });
 
 test('check/download/install are distinct and require SHA-256 plus a second on-disk check', async t => {

@@ -157,6 +157,51 @@ test('a minute without speech pauses the microphone and leaves no recurring time
   assert(f.calls.includes('stop-listen:session-1')); assert.equal(f.timers.size, 0); assert.equal(f.submissions.length, 0); await f.controller.end();
 });
 
+test('a rejected SAPI hypothesis restores the no-speech timeout without extending it on repeated empty results', async () => {
+  const f = fixture(); await f.begin();
+  f.emit('partial', 'background noise'); await f.tick(500);
+  f.emit('partial', '');
+  assert.equal(f.timers.size, 1);
+  const deadline = [...f.timers.values()][0].at;
+  await f.tick(30_000); f.emit('partial', ''); f.emit('partial', '   ');
+  assert.equal([...f.timers.values()][0].at, deadline, 'empty revisions must not postpone automatic microphone release');
+  await f.tick(29_999); assert.equal(f.controller.getState().phase, 'listening');
+  await f.tick(1);
+  assert.equal(f.controller.getState().phase, 'paused');
+  assert.equal(f.controller.getState().error, 'no-speech');
+  assert(f.calls.includes('stop-listen:session-1'));
+  assert.equal(f.timers.size, 0); assert.equal(f.submissions.length, 0);
+  await f.controller.end();
+});
+
+test('pause or workspace teardown clears a restored empty-transcript timeout and ignores late results', async () => {
+  for (const action of ['pause', 'end'] as const) {
+    const f = fixture(); await f.begin(); f.emit('partial', 'noise'); f.emit('partial', '');
+    assert.equal(f.timers.size, 1);
+    await f.controller[action]();
+    f.emit('partial', ''); f.emit('final', 'late words'); await f.tick(120_000);
+    assert.equal(f.timers.size, 0); assert.equal(f.submissions.length, 0);
+    assert.equal(f.controller.getState().phase, action === 'pause' ? 'paused' : 'idle');
+    assert.equal(f.controller.getState().error, undefined);
+    await f.controller.end();
+  }
+});
+
+test('an authoritative empty stop result discards a stale hypothesis instead of sending it to AI', async () => {
+  const f = fixture(), final = defer<{ text: string }>();
+  f.api.voiceStopListening = id => { f.calls.push(`stop-listen:${id}`); return final.promise; };
+  await f.begin(); f.emit('partial', 'a hypothesis later rejected by Windows');
+  const stopped = f.controller.finishTurn(); await settle();
+  assert.equal(f.controller.getState().phase, 'thinking');
+  // Rejection can arrive while stopping, when old session events are filtered.
+  f.emit('partial', '');
+  final.resolve({ text: '' }); await stopped;
+  assert.equal(f.submissions.length, 0);
+  assert.equal(f.listens.length, 2);
+  assert.equal(f.controller.getState().transcript, '');
+  await f.controller.end();
+});
+
 test('OS cancellation of read-aloud does not automatically reopen the microphone', async () => {
   const f = fixture(); await f.begin(); f.emit('partial', 'question'); await f.tick(1400);
   f.submissions[0].answer('answer'); f.submissions[0].resolve(); await settle();
@@ -236,6 +281,40 @@ test('configuration and preview work without an AI key or recognition model and 
   assert.equal(f.controller.getState().transcript, '');
   await f.tick(120_000); assert.equal(f.listens.length, 0);
   await f.controller.end();
+});
+
+test('Windows TTS-only preview uses the installed language without changing answer preferences or capturing audio', async () => {
+  for (const language of ['en-US', 'zh-CN']) {
+    const f = fixture(); f.blocked('missing-key');
+    f.capabilities({ available: false, engine: 'windows-speech', reason: 'recognizer-unavailable', locales: [],
+      voices: [{ id: 'windows.sapi.' + 'a'.repeat(64), name: 'Installed voice', language }] });
+    await f.controller.configure(); const preferences = f.controller.getState().preferences;
+    await f.controller.preview();
+    assert.equal(f.controller.getState().phase, 'previewing');
+    assert(f.speaks[0].segments?.length);
+    assert(f.speaks[0].segments?.every(segment => segment.locale === language));
+    assert.equal(f.controller.getState().preferences, preferences);
+    assert.equal(preferences.readingMode, 'auto');
+    f.emit('speech-end', undefined, f.speaks[0].sessionId); await settle();
+    assert.equal(f.controller.getState().phase, 'paused');
+    assert.equal(f.listens.length, 0); assert.equal(f.submissions.length, 0); assert.equal(f.timers.size, 0);
+    await f.controller.end();
+  }
+});
+
+test('single-language preview keeps an explicitly saved unavailable voice and reports its failure', async () => {
+  const f = fixture(), unavailable = 'windows.sapi.' + 'f'.repeat(64);
+  f.capabilities({ available: false, engine: 'windows-speech', locales: [],
+    voices: [{ id: 'windows.sapi.' + 'a'.repeat(64), name: 'Available English', language: 'en-US' }] });
+  await f.controller.configure();
+  f.controller.setPreferences({ ...f.controller.getState().preferences, englishVoiceId: unavailable });
+  f.api.voiceSpeak = async options => { f.speaks.push(options); throw new Error('[voice-unavailable]'); };
+  await f.controller.preview();
+  assert(f.speaks[0].segments?.every(segment => segment.voiceId === unavailable));
+  assert.equal(f.controller.getState().phase, 'error');
+  assert.equal(f.controller.getState().error, 'voice-unavailable');
+  assert.equal(f.controller.getState().preferences.englishVoiceId, unavailable);
+  assert.equal(f.listens.length, 0); await f.controller.end();
 });
 
 test('normal answer speech uses current article sources to shorten citations without changing the original answer', async () => {

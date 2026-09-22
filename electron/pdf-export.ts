@@ -36,7 +36,7 @@ export async function exportAnnotatedPdf(source:Uint8Array,doc:PaperDocument):Pr
     const subtype=kind==='underline'?'Underline':kind==='strikeout'?'StrikeOut':'Highlight';
     const item=context.obj({Type:'Annot',Subtype:subtype,Rect:rect,QuadPoints:quad,C:rgb,CA:kind==='highlight'?0.38:1,F:4,
       Contents:PDFHexString.fromText([annotation.text,annotation.comment].filter(Boolean).join('\n\n')),
-      T:PDFHexString.fromText('Folio'),NM:PDFString.of(annotation.id),M:PDFString.fromDate(new Date(annotation.createdAt))});
+      T:PDFHexString.fromText('Pairleaf'),NM:PDFString.of(annotation.id),M:PDFString.fromDate(new Date(annotation.createdAt))});
     if(kind!=='highlight'){
       // Native text-markup annotations plus an appearance matching Folio's PDF
       // coordinate geometry. Page rotation and zoom are applied by the reader.

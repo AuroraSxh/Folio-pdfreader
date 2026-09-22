@@ -76,7 +76,7 @@ export function renderMarkdown(workspace: Workspace, firstReadOverride?: string,
       for (const message of conversation.messages) out.push(`#### ${message.role === 'user' ? t('我', 'Me') : t('助手', 'Assistant')} · ${iso(message.createdAt)}${message.interrupted ? t('（已中断）', ' (interrupted)') : ''}`, '', clean(message.content), '');
     }
   }
-  out.push(t('_由 Folio 导出。此标记区域由应用更新；可在区域之外自由添加笔记。_', '_Exported by Folio. The app updates this marked region; add personal notes outside it to preserve them._'), '', END, '');
+  out.push(t('_由 Pairleaf 导出。此标记区域由应用更新；可在区域之外自由添加笔记。_', '_Exported by Pairleaf. The app updates this marked region; add personal notes outside it to preserve them._'), '', END, '');
   return out.join('\n');
 }
 

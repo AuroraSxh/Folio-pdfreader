@@ -11,7 +11,7 @@ export interface InstalledVoice { id: string; name: string; language: string; qu
 
 export interface VoiceCapabilities {
   available: boolean;
-  engine: 'speech-analyzer' | 'speech-recognizer' | 'unsupported';
+  engine: 'speech-analyzer' | 'speech-recognizer' | 'windows-speech' | 'unsupported';
   /** Stable code; never includes native diagnostics or recognized text. */
   reason?: string;
   locales: string[];
@@ -38,7 +38,7 @@ export interface VoiceSpeakOptions {
   text: string;
   locale: string;
   voiceId?: string;
-  /** Native AVSpeechUtterance rate, from 0.1 to 1. Omit for the system default. */
+  /** Normalized reading rate, from 0.1 to 1; 0.5 is normal. Each native backend maps it to its own rate scale. */
   rate?: number;
   /** One native playback session; never reopen the microphone between segments. */
   segments?: VoiceSpeakSegment[];

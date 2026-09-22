@@ -2,15 +2,15 @@
 
 [中文教程](#中文教程) · [English guide](#english-guide)
 
-适用于 Folio 0.4.1。Mac 版使用 Apple 语音识别和系统朗读，无需额外语音 API Key；AI 对话仍需要你自己的 Key。本版不包含 Windows 语音功能。
+适用于 Pairleaf 0.5.0 的 Mac 版（原 Folio）。Apple 语音识别和系统朗读无需额外语音 API Key；AI 对话仍需要你自己的 Key。Windows 用户请看[独立教程](windows-voice.md)。
 
-For Folio 0.4.1 on Mac. Apple recognition and system voices need no extra speech API key; AI conversations still require your own provider key. Windows voice support is not included.
+For Pairleaf 0.5.0 on Mac, previously called Folio. Apple recognition and system voices need no extra speech API key; AI conversations still require your own provider key. Windows users should see the [separate guide](windows-voice.md#english-guide).
 
 ## 中文教程
 
 ### 开始语音对话
 
-**语音默认关闭，重启 Folio 不会恢复聆听或朗读。** 已选音色和语速会保存，但不会因此自动开启语音。
+**语音默认关闭，重启 Pairleaf 不会恢复聆听或朗读。** 已选音色和语速会保存，但不会因此自动开启语音。
 
 1. 打开一篇论文，点击工具栏的「语音」。这一步只打开选项，麦克风仍关闭。
 2. 选择「识别语言」，再分别选择「中文音色」「英文音色」和朗读速度。识别语言也决定 AI 回答的语言，朗读音色可单独设置。
@@ -18,7 +18,7 @@ For Folio 0.4.1 on Mac. Apple recognition and system voices need no extra speech
 4. 准备提问时，点击「开始聆听」。首次使用按系统提示允许麦克风访问；若缺少识别模型，需明确点击「下载模型并开始」。AI Key 在现有 AI 设置中填写。
 5. 说完稍作停顿，问题会发送到当前论文对话。朗读回答时麦克风暂停；点击「打断并讲话」可继续提问，「暂停」或「结束」可停止。
 
-收起 AI 面板后仍能语音对话，再打开时可看到相同的转写和回答。切换论文、锁屏或退出 Folio 会停止语音；再次使用需要手动开启。
+收起 AI 面板后仍能语音对话，再打开时可看到相同的转写和回答。切换论文、锁屏或退出 Pairleaf 会停止语音；再次使用需要手动开启。
 
 ### 删除误录问答
 
@@ -36,13 +36,13 @@ For Folio 0.4.1 on Mac. Apple recognition and system voices need no extra speech
 
 下载声音和设为系统默认是两个步骤。[Apple 官方说明](https://support.apple.com/zh-cn/guide/mac-help/mchlp2290/mac)
 
-### 在 Folio 中使用下载的音色
+### 在 Pairleaf 中使用下载的音色
 
-回到 Folio 的语音选项，点击「刷新音色」。在「中文音色」和「英文音色」中分别选带「高级」或「增强」标记的声音，再点击「试听音色」。如果列表没有更新，等下载完全结束后再次刷新，或结束并重新打开语音选项。
+回到 Pairleaf 的语音选项，点击「刷新音色」。在「中文音色」和「英文音色」中分别选带「高级」或「增强」标记的声音，再点击「试听音色」。如果列表没有更新，等下载完全结束后再次刷新，或结束并重新打开语音选项。
 
-开发用 Mac 已在 Folio 中识别到高级音色 **月（Yue）、黎潋（Lilian）、莉莉和 Ava**。你的系统版本、语言和已安装声音可能不同，以 Folio 列表实际显示为准；系统里能下载的声音不一定都能供 Folio 使用。
+开发用 Mac 已在 Pairleaf 中识别到高级音色 **月（Yue）、黎潋（Lilian）、莉莉和 Ava**。你的系统版本、语言和已安装声音可能不同，以 Pairleaf 列表实际显示为准；系统里能下载的声音不一定都能供 Pairleaf 使用。
 
-**更改 Mac 默认声音不会覆盖 Folio 已保存的音色选择。** 想一直使用某个声音，请在 Folio 的中英文下拉菜单里直接选它。「自动选择最佳可用音色」优先考虑对应语言的音质，同质量时优先系统选择，因此并非严格跟随系统默认。
+**更改 Mac 默认声音不会覆盖 Pairleaf 已保存的音色选择。** 想一直使用某个声音，请在 Pairleaf 的中英文下拉菜单里直接选它。「自动选择最佳可用音色」优先考虑对应语言的音质，同质量时优先系统选择，因此并非严格跟随系统默认。
 
 ### 混读、术语与引用
 
@@ -50,13 +50,13 @@ For Folio 0.4.1 on Mac. Apple recognition and system voices need no extra speech
 
 两种声音仍可能有音色差异，可以分别试听、调整语速，也可选择固定使用中文或英文音色。高级音质是系统提供的分类，不保证每个人都觉得更自然。
 
-Folio 不保存原始录音。Apple 识别使用本地处理；问题转写和论文上下文仍会按你的 AI 设置发送给所选服务，AI 按文字请求计费。
+Pairleaf 不保存原始录音。Apple 识别使用本地处理；问题转写和论文上下文仍会按你的 AI 设置发送给所选服务，AI 按文字请求计费。
 
 ## English guide
 
 ### Start a conversation
 
-**Voice is off by default. Restarting Folio never resumes listening or playback.** Your voice and speed preferences are saved separately.
+**Voice is off by default. Restarting Pairleaf never resumes listening or playback.** Your voice and speed preferences are saved separately.
 
 1. Open a paper and select **Voice** in the toolbar. This opens the options; the microphone stays off.
 2. Choose the recognition language, then your Chinese and English voices and reading speed. Recognition language also determines the language of AI replies; reading voices are independent.
@@ -64,7 +64,7 @@ Folio 不保存原始录音。Apple 识别使用本地处理；问题转写和�
 4. Select **Start listening** when ready. Allow microphone access if prompted. If a recognition model is missing, use **Download model and start** explicitly. Add your provider key in the existing AI settings for conversation.
 5. Pause briefly after speaking to send your question to the paper's conversation. The microphone pauses while the answer is read aloud. Use **Interrupt and speak**, pause, or end as needed.
 
-Voice remains available with the AI panel hidden; reopening it shows the same transcript and answer. Switching papers, locking the screen, or quitting Folio stops the session. Start it manually next time.
+Voice remains available with the AI panel hidden; reopening it shows the same transcript and answer. Switching papers, locking the screen, or quitting Pairleaf stops the session. Start it manually next time.
 
 ### Delete unwanted exchanges
 
@@ -82,13 +82,13 @@ On macOS 26:
 
 Installing a voice and choosing the system default are separate steps. [Apple's instructions](https://support.apple.com/guide/mac-help/mchlp2290/26/mac/26)
 
-### Select the voices in Folio
+### Select the voices in Pairleaf
 
-Return to Folio's options and select **Refresh voices**. Choose voices marked **Premium** or **Enhanced** independently under **Chinese voice** and **English voice**, then preview them. If a new voice is missing, wait for its download to finish and refresh again, or close and reopen the voice options.
+Return to Pairleaf's options and select **Refresh voices**. Choose voices marked **Premium** or **Enhanced** independently under **Chinese voice** and **English voice**, then preview them. If a new voice is missing, wait for its download to finish and refresh again, or close and reopen the voice options.
 
-On the development Mac, Folio detected **月 (Yue), 黎潋 (Lilian), 莉莉, and Ava** as Premium voices. Availability depends on your Mac, languages, and installed voices. Use the list Folio actually exposes; not every downloadable system voice is available to the app.
+On the development Mac, Pairleaf detected **月 (Yue), 黎潋 (Lilian), 莉莉, and Ava** as Premium voices. Availability depends on your Mac, languages, and installed voices. Use the list Pairleaf actually exposes; not every downloadable system voice is available to the app.
 
-**Changing the Mac default does not replace a voice already selected in Folio.** Select a specific voice in each Folio menu to keep using it. **Best available voice** prefers quality for the matching language, with the system choice breaking ties. It does not strictly follow the system default.
+**Changing the Mac default does not replace a voice already selected in Pairleaf.** Select a specific voice in each Pairleaf menu to keep using it. **Best available voice** prefers quality for the matching language, with the system choice breaking ties. It does not strictly follow the system default.
 
 ### Mixed languages, terminology, and references
 
@@ -96,7 +96,7 @@ Automatic mode reads English words and phrases with the English voice. Common sc
 
 The two voices can still sound different. Preview each, adjust speed, or select a fixed reading language. Premium is a system quality category, not a guarantee of a more natural sound for every listener.
 
-Folio does not save raw microphone audio. Recognition runs on-device; transcripts and paper context still go to your selected AI provider, with normal text-request charges.
+Pairleaf does not save raw microphone audio. Recognition runs on-device; transcripts and paper context still go to your selected AI provider, with normal text-request charges.
 
 ## Availability / 兼容性
 
@@ -107,11 +107,17 @@ Folio does not save raw microphone audio. Recognition runs on-device; transcript
 
 ## Development
 
-`npm run build` and `npm run dev` build a universal Swift helper on macOS. Build inputs are cached; Windows builds skip the helper. The helper is packaged as `Resources/apple-speech/Folio Speech.app`, separate from the renderer and loaded only on demand. It receives bounded JSON messages over pipes; it does not expose a network service.
+`npm run build` and `npm run dev` build a universal Swift helper on macOS. Building this helper requires Xcode Command Line Tools with the macOS 26 SDK. Build inputs are cached; Windows packages exclude the Apple helper. The helper is packaged as `Resources/apple-speech/Folio Speech.app`, separate from the renderer and loaded only on demand. It receives bounded JSON messages over pipes; it does not expose a network service.
 
 Apple references: [SpeechAnalyzer](https://developer.apple.com/videos/play/wwdc2025/277/), [on-device availability](https://developer.apple.com/documentation/speech/sfspeechrecognizer/supportsondevicerecognition), [speech synthesis](https://developer.apple.com/documentation/avfaudio/avspeechsynthesizer/).
 
-## 0.4.1 release checks / 正式包验证
+## Pairleaf 0.5.0 validation / 本版验证
+
+Release validation is pending. The results below belong to earlier Folio versions, not Pairleaf 0.5.0. Windows speech has no real-device validation; see its [guide](windows-voice.md).
+
+0.5.0 发布验证尚待完成。以下为旧版 Folio 的历史结果，不能算作本版验证；Windows 语音尚无实机结果，见[独立说明](windows-voice.md)。
+
+## Folio 0.4.1 release checks / 历史正式包验证
 
 The final Mac universal package passed the production build, 156 unit tests, and 45 packaged-app UI checks (13 voice, 6 chat deletion, 20 reading, 6 language/update). Voice checks cover startup, reopening a paper, retaining voice preferences without resuming audio, and both tutorial languages. Real Apple file synthesis also passed for nine mixed-language segments using installed Premium Lili and Ava voices. Automated checks use no microphone, speaker playback, or live AI requests; they do not measure subjective naturalness. Intel Mac and older macOS have not been run-tested.
 

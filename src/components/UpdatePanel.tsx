@@ -98,7 +98,7 @@ function statusTitle(status: UpdateStatus | null, t: Translator) {
     case 'downloaded': return t('安装包已下载并完成校验', 'Installer downloaded and verified');
     case 'opening': return t('正在打开安装包…', 'Opening the installer…');
     case 'error': return t('更新未完成', 'Update not completed');
-    default: return t('检查 Folio 新版本', 'Check for a newer Folio');
+    default: return t('检查 Pairleaf 新版本', 'Check for a newer Pairleaf');
   }
 }
 function bytes(value: number, locale: string) {
@@ -120,9 +120,9 @@ function isPortable(status: UpdateStatus | null) { return status?.release?.asset
 function InstallHelp({ status }: { status: UpdateStatus }) {
   const { t } = useI18n();
   return <p className="fl-update-install-help">{PLATFORM === 'darwin'
-    ? t('打开 DMG 后，将 Folio 拖入「应用程序」并替换旧版；如系统要求，请先退出 Folio。', 'Open the DMG, drag Folio into Applications, and replace the previous version. Quit Folio first if prompted.')
-    : isPortable(status) ? t('显示下载文件后，请先退出当前 Folio，再运行新版免安装程序。', 'Reveal the downloaded file, quit the current Folio, then run the new portable version.')
-    : t('打开安装程序后，当前 Folio 将退出。请按安装向导完成更新。', 'Opening the installer will quit the current Folio. Follow the setup steps to finish updating.')}</p>;
+    ? t('首次从 Folio 更新：先退出 Folio，将 Pairleaf 拖入「应用程序」。确认原论文与设置后，可移除旧 Folio.app；请保留数据目录。已有 Pairleaf 时，退出后选择替换即可。', 'Updating from Folio for the first time: quit Folio and drag Pairleaf into Applications. After checking your papers and settings, you can remove Folio.app; keep the data folder. For later Pairleaf updates, quit and replace the existing app.')
+    : isPortable(status) ? t('显示下载文件后，请先退出当前 Pairleaf，再运行新版免安装程序。', 'Reveal the downloaded file, quit the current Pairleaf, then run the new portable version.')
+    : t('打开安装程序后，当前 Pairleaf 将退出。请按安装向导完成更新。', 'Opening the installer will quit the current Pairleaf. Follow the setup steps to finish updating.')}</p>;
 }
 function installLabel(t: Translator, status: UpdateStatus | null) { return PLATFORM === 'darwin' ? t('打开 DMG 安装', 'Open DMG') : isPortable(status) ? t('显示下载文件', 'Reveal download') : t('打开安装程序', 'Open installer'); }
 function Actions({ status, pending, run, openRelease, compact = false }: ReturnType<typeof useUpdates> & { compact?: boolean }) {
@@ -147,9 +147,9 @@ export default function UpdatePanel({ autoCheckUpdates, onAutoCheckUpdatesChange
   const issue = localError ?? status?.error;
   const releaseDate = status?.release?.publishedAt ? new Date(status.release.publishedAt) : null;
   return <section className="fl-update-panel" aria-label={t('应用更新', 'App updates')}>
-    <div className="fl-section-heading"><span className="fl-eyebrow">FOLIO UPDATES</span><h3>{t('让阅读体验，继续变好。', 'Keep your reader up to date.')}</h3><p>{t('从 Folio 的 GitHub 正式发布版本获取更新。', 'Get updates from Folio’s official GitHub releases.')}</p></div>
+    <div className="fl-section-heading"><span className="fl-eyebrow">PAIRLEAF UPDATES</span><h3>{t('让阅读体验，继续变好。', 'Keep your reader up to date.')}</h3><p>{t('从 Pairleaf 的 GitHub 正式发布版本获取更新。', 'Get updates from Pairleaf’s official GitHub releases.')}</p></div>
     <div className="fl-update-card">
-      <div className="fl-update-card-heading"><span className="fl-update-icon"><ArrowDownToLine size={22} /></span><div><strong>Folio</strong><span>{t('当前版本 {version}', 'Current version {version}', { version: status?.currentVersion ?? '—' })}</span></div>{status?.phase === 'up-to-date' && <Check size={20} />}</div>
+      <div className="fl-update-card-heading"><span className="fl-update-icon"><ArrowDownToLine size={22} /></span><div><strong>Pairleaf</strong><span>{t('当前版本 {version}', 'Current version {version}', { version: status?.currentVersion ?? '—' })}</span></div>{status?.phase === 'up-to-date' && <Check size={20} />}</div>
       <div className="fl-update-status" role="status"><strong>{statusTitle(status, t)}</strong>{status?.release && <span>{status.release.version}{releaseDate && Number.isFinite(releaseDate.getTime()) && ` · ${releaseDate.toLocaleDateString(locale)}`}{status.release.size !== undefined && ` · ${bytes(status.release.size, locale)}`}</span>}</div>
       {status?.phase === 'downloading' && <Progress status={status} />}
       {issue && <p className={`fl-update-error ${issue === 'cancelled' ? 'is-cancelled' : ''}`} role={issue === 'cancelled' ? 'status' : 'alert'}><CircleAlert size={15} /><span>{updateError(issue, t)}</span></p>}
@@ -172,7 +172,7 @@ export function UpdateNotice() {
   const key = `${status.release.version}:${status.phase}`;
   if (dismissed.has(key)) return null;
   const dismiss = () => setDismissed(previous => new Set(previous).add(key));
-  return <aside className="fl-update-notice" aria-label={t('Folio 更新提示', 'Folio update notice')}>
+  return <aside className="fl-update-notice" aria-label={t('Pairleaf 更新提示', 'Pairleaf update notice')}>
     <div className="fl-update-notice-heading"><span className="fl-update-icon"><Download size={17} /></span><strong role="status">{statusTitle(status, t)}</strong><button type="button" className="fl-icon-button" aria-label={t('关闭更新提示', 'Dismiss update notice')} onClick={dismiss}><X size={15} /></button></div>
     {status.phase === 'available' && <p>{t('准备好时再更新，继续当前阅读。', 'Update whenever you’re ready. Your reading can continue.')}</p>}
     {status.phase === 'downloading' && <Progress status={status} />}

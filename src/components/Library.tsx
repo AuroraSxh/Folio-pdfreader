@@ -88,6 +88,6 @@ export default function Library({ workspaces, onOpen, onCreate, onDemo, onToggle
       })}
       {view === 'grid' && <button className="fl-add-card" onClick={onCreate} disabled={busy}><span><Plus size={24} strokeWidth={1.2} /></span><strong>{t("收下新的灵感","Add a new paper")}</strong><small>{t("导入 PDF，开始新的阅读","Import a PDF to get started")}</small></button>}
     </div>}
-    <footer className="fl-library-bottom"><span>FOLIO · A PLACE TO THINK</span><span><Clock3 size={12} />{t(" 每一页，都值得慢慢读。"," Take your time with each page.")}</span></footer>
+    <footer className="fl-library-bottom"><span>PAIRLEAF · A PLACE TO THINK</span><span><Clock3 size={12} />{t(" 每一页，都值得慢慢读。"," Take your time with each page.")}</span></footer>
   </div>;
 }

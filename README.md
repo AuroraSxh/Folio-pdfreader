@@ -1,8 +1,8 @@
-# Folio
+# Pairleaf
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-A desktop PDF reader for academic papers. Keep a paper and its supplements in one workspace, read them side by side, and discuss them with an embedded AI companion.
+A desktop PDF reader for academic papers, previously called Folio. Keep a paper and its supplements in one workspace, read them side by side, and discuss them with an embedded AI companion.
 
 **AI assistance requires your own API key. No key is included, and offline reading needs no key.**
 
@@ -11,7 +11,7 @@ A desktop PDF reader for academic papers. Keep a paper and its supplements in on
 - Read main and supplementary PDFs side by side or stacked, with independent scrolling and zoom.
 - Copy text, highlight, underline, strike through, and add comments. Undo edits and export annotated PDFs.
 - Ask DeepSeek or another supported AI provider to explain passages and help with reading notes.
-- Talk to the AI on Mac using Apple speech recognition and system voices. Voice is off by default. [Voice setup and tutorial](docs/apple-voice.md#english-guide)
+- Talk to the AI using system speech, off by default. [Mac setup](docs/apple-voice.md#english-guide) · [Windows setup](docs/windows-voice.md#english-guide) (experimental; requires a compatible local speech engine).
 - Export notes to Obsidian or Markdown. Papers, annotations, and notes stay on your computer.
 - Switch between English and Chinese, and check GitHub for updates from the app.
 
@@ -19,14 +19,16 @@ A desktop PDF reader for academic papers. Keep a paper and its supplements in on
 
 [Latest release](https://github.com/AuroraSxh/Folio-pdfreader/releases/latest)
 
+0.5.0 is being prepared; its download links will work after publication.
+
 | Platform | Version | Download |
 | --- | --- | --- |
-| macOS 13+, Apple Silicon / Intel | 0.4.1 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.4.1/Folio-0.4.1-mac-universal.dmg) |
-| Windows 10 / 11, x64 | 0.4.1 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.4.1/Folio-0.4.1-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.4.1/Folio-0.4.1-windows-x64-portable.exe) |
+| macOS 13+, Apple Silicon / Intel | 0.5.0 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-mac-universal.dmg) |
+| Windows 10 / 11, x64 | 0.5.0 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-windows-x64-portable.exe) |
 
-On Mac, open the DMG and drag Folio into Applications. To update, quit the old version and replace it. Your papers and notes are kept.
+On Mac, quit Folio and drag Pairleaf into Applications. Check that your papers and settings are present before removing the old Folio.app; keep its data folders. The first renamed app does not replace Folio.app automatically. Later Pairleaf updates use the usual drag-and-replace. [Moving from Folio](docs/rename-pairleaf.md#english-guide)
 
-Mac builds are not Developer ID signed or notarized; Windows builds are unsigned. Tested on Apple Silicon. Intel Mac has not been tested on hardware, and Windows packages have only passed static checks.
+Mac builds are not Developer ID signed or notarized; Windows builds are unsigned. Intel Mac and Windows have not been tested on hardware. Windows voice availability varies by installed speech engine. [Windows notes](docs/windows.md)
 
 ## Update history
 
@@ -34,6 +36,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
+| 0.5.0 (in preparation) | Renamed Folio to Pairleaf on Mac and Windows, keeping existing libraries and settings. Adds experimental local Windows speech recognition and reading voices. |
 | [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | Better mixed-language speech and scientific term pronunciation; shorter spoken citations, separate Chinese/English voices, and voice previews. Voice stays off until started. Includes a setup tutorial and deletion of individual question-and-answer exchanges. Windows installer and portable builds updated. |
 | [0.4.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.0) | Mac voice conversations using Apple speech recognition and system voices, with a shared text history and controls that stay available when the AI panel is hidden. |
 | [0.3.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.3.0) | English and Chinese UI, menus, and note exports; GitHub update checks and verified installer downloads. |
@@ -44,7 +47,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 ## Development
 
-Node.js 24 and npm are required. Mac builds also use Xcode Command Line Tools with the macOS 26 SDK to build the native speech helper. See [Mac voice support](docs/apple-voice.md).
+Node.js 24 and npm are required. Mac builds need Xcode Command Line Tools with the macOS 26 SDK. Windows builds and native speech tests need the .NET 10 SDK; installed apps use Windows .NET Framework 4.8 instead, without a bundled SDK. See [Mac speech](docs/apple-voice.md) and [Windows speech build instructions](native/windows-speech/README.md).
 
 ```bash
 npm ci

@@ -1,4 +1,5 @@
 await import('./build-apple-speech.mjs');
+if (process.platform === 'win32') await import('./build-windows-speech.mjs');
 import { build as bundle } from 'esbuild';
 import { build } from 'vite';
 import { cp, mkdir } from 'node:fs/promises';

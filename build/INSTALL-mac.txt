@@ -1,11 +1,17 @@
-Folio 0.4.1 — 学术 PDF 阅读器
+Pairleaf 0.5.0 — 学术 PDF 阅读器（原 Folio）
 
 适用：macOS 13 或更高版本；此通用安装包包含 Apple Silicon 与 Intel 两种架构。
 
 安装
-1. 将窗口中的 Folio 拖入 Applications（应用程序）。
-2. 等待复制完成，弹出 Folio 磁盘映像。
-3. 从「应用程序」打开 Folio。
+1. 先退出正在运行的 Folio 或 Pairleaf，再将窗口中的 Pairleaf 拖入 Applications（应用程序）。
+2. 等待复制完成，弹出 Pairleaf 磁盘映像。
+3. 从「应用程序」打开 Pairleaf。
+
+首次从 Folio 更新
+Pairleaf.app 与 Folio.app 名字不同，Finder 不会自动替换旧应用。
+打开 Pairleaf，确认原论文、笔记和设置都在后，可移除旧 Folio.app。
+只移除旧应用本身，请保留论文库、设置目录和钥匙串；不要使用清理工具一并删除这些数据。
+新旧应用不要同时编辑同一论文库。以后 Pairleaf 更新到 Pairleaf，退出后拖入并选择「替换」即可。
 
 首次打开
 此版本只有本机 ad-hoc 签名，未做 Apple Developer ID 签名及公证。
@@ -34,9 +40,11 @@ AI 与笔记
 在「设置与连接」中输入自己的 DeepSeek API Key，并选择自己的 Obsidian 仓库。
 安装包不包含发送者的 API Key、论文或笔记。
 系统可能询问「Folio Safe Storage」钥匙串授权，用于加密保存 API Key；密码仅在系统弹窗输入。
+这个旧名称有意保留，以接续原有加密信息，无需删除或重置钥匙串。
 
 数据与移除
 默认论文库在「文稿/Folio Library」。移除文章后可在侧栏「已移除文章」恢复。
+设置和日志仍位于 ~/Library/Application Support/Folio；更名不会搬动数据，自定义论文库路径继续使用。
 已移除文章不会自动过期，只有再次确认「彻底删除」才永久删除。
 设置里的完整 ZIP 备份可以转移论文、笔记及已移除文章，不包含 API Key。
 
@@ -45,7 +53,7 @@ AI 与笔记
 
 语言与更新
 在「设置与连接」顶部的「语言 / Language」选择简体中文或 English，并保存。
-「应用更新」可检查 GitHub 新版本；下载并通过 SHA-256 校验后，点击打开 DMG，将 Folio 拖入 Applications 替换旧版。
+「应用更新」可检查 GitHub 新版本；下载并通过 SHA-256 校验后，打开 DMG，将 Pairleaf 拖入 Applications。首次更名请按上方说明保留并检查原数据。
 启动时只做一次轻量检查，6 小时内不重复自动检查；可在设置中关闭。
 
 Mac 语音对话
@@ -55,8 +63,8 @@ Mac 语音对话
 收起 AI 面板仍可继续语音对话，转写与回答保存在同一聊天记录；支持暂停、打断和结束。
 识别可用性取决于设备、系统和语言。真实麦克风与扬声器测试尚未完成。
 
-0.4.1：自动混读将中文里的英文单词和连续短语交给英文音色完整朗读，显示文字保留原来的术语拼写。
-中文、英文音色分别记忆；自动选择优先使用已安装的增强／高级音色。可在系统设置 → 辅助功能 → 阅读与朗读下载更多声音，再在 Folio 刷新。
+自动混读将中文里的英文单词和连续短语交给英文音色完整朗读，显示文字保留原来的术语拼写。
+中文、英文音色分别记忆；自动选择优先使用已安装的增强／高级音色。可在系统设置 → 辅助功能 → 阅读与朗读下载更多声音，再在 Pairleaf 刷新。
 试听不需要 AI Key、不收音、不写入聊天。识别语言与朗读音色设置相互独立。
 常见实验符号（如 CD4+、fl/fl）使用朗读别名；方括号来源引用不朗读，正文内页码简化为正文／补充材料页码，聊天引用保持完整。
 
@@ -64,11 +72,23 @@ Mac 语音对话
 1. 打开 macOS「系统设置 → 辅助功能 → 阅读与朗读」（旧系统称「朗读内容」）。
 2. 点击「系统声音」旁的 ⓘ，选择中文／普通话或英语，试听并下载增强或高级音色。
 3. 下载完成后返回并点「完成」，选择「系统语音语言」，再从「系统声音」菜单选中要用的默认声音。
-4. 回到 Folio，暂停语音，点击「刷新音色」，分别选择中文、英文声音并试听。例如月／黎潋（高音质）与 Ava（高音质），以本机实际可用列表为准。
-系统默认声音不会覆盖 Folio 已保存的音色；如需使用新声音，请在 Folio 中明确选择。
+4. 回到 Pairleaf，暂停语音，点击「刷新音色」，分别选择中文、英文声音并试听。例如月／黎潋（高音质）与 Ava（高音质），以本机实际可用列表为准；并非所有可下载声音都能在应用中使用。
+系统默认声音不会覆盖 Pairleaf 已保存的音色；如需使用新声音，请在 Pairleaf 中明确选择。自动选择先按音质、同级再优先系统声音，并非严格跟随系统默认。
 新声音可能稍后才进入列表，等下载完成后再刷新或重开语音选项。
 软件内「阅读小贴士」和「语音选项」都有离线教程。在线中英文教程：
 https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/apple-voice.md
 
 误录内容：在提问或回答下点击「删除」，确认后移除本轮问答及关联的自动记忆；旧版记忆如有残留，可在「记忆」中另行删除。删除会结束正在进行的语音。
+
+English
+Pairleaf is the new name of Folio. Quit the old app, drag Pairleaf into Applications, then open it there.
+On the first renamed update, Pairleaf.app does not automatically replace Folio.app. Check your existing papers and settings before removing Folio.app. Remove only the app; keep the library, settings, and Keychain. Avoid running both versions against one library. Future Pairleaf updates use the normal quit-and-replace process.
+The default library remains Documents/Folio Library and settings remain in ~/Library/Application Support/Folio. The old Folio Safe Storage Keychain name is intentional.
+AI needs your own API key; offline reading does not. No personal papers or keys are included.
+Voice is off by default. Voice opens options only; Start listening uses the microphone. Preview needs no key or microphone. Restarting never resumes a voice session.
+Download voices in macOS System Settings → Accessibility → Read & Speak → ⓘ beside System voice. After downloading, choose Done and select the system default in the System voice menu. Refresh voices in Pairleaf and select Chinese and English voices separately; changing the Mac default does not override saved app choices.
 Unwanted transcript: select Delete under a question or answer to remove that exchange and linked automatic memories. Remove any older unlinked memory in Memory separately. Deleting ends active voice.
+This Mac build is ad-hoc signed, without Apple Developer ID signing or notarization. For an unverified-developer prompt, follow Apple's instructions only after confirming the download's source: https://support.apple.com/102445
+
+迁移说明 / Migration guide:
+https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md

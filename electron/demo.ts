@@ -6,7 +6,7 @@ import { DEFAULT_VIEW, type PaperDocument } from '../shared/types';
 
 const chapters=[
   ['A workspace for a closer reading',
-    'Reading a paper is rarely a one-document task. The main text presents the argument, while supplementary materials preserve experimental detail. Folio brings these documents into one quiet workspace.',
+    'Reading a paper is rarely a one-document task. The main text presents the argument, while supplementary materials preserve experimental detail. Pairleaf brings these documents into one quiet workspace.',
     'This is a demonstration document, not a published study. All values in the sample figure are illustrative. Use it to explore split reading, editable outlines, full-text search, highlighting, and page navigation.',
     'Keep the main article in the left pane and open Supplementary materials in the right pane. Each pane has its own zoom, page position, scrolling mode, and search. Your reading position is saved locally.'],
   ['01  Read the evidence together',
@@ -26,10 +26,10 @@ const chapters=[
 async function makeDocument(supplement:boolean){
   const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold),serif=await pdf.embedFont(StandardFonts.TimesRoman);
   const content=supplement?[
-    ['Supplementary materials','Table S1. Demonstration groups','Group A: illustrative reference condition, n = 24. Group B: illustrative comparison condition, n = 24. Group C: illustrative follow-up condition, n = 24. These values are fictional and must not be interpreted as scientific results.','This supplement accompanies the Folio demonstration document. Use the right pane to keep supporting material visible as you read the main article.'],
+    ['Supplementary materials','Table S1. Demonstration groups','Group A: illustrative reference condition, n = 24. Group B: illustrative comparison condition, n = 24. Group C: illustrative follow-up condition, n = 24. These values are fictional and must not be interpreted as scientific results.','This supplement accompanies the Pairleaf demonstration document. Use the right pane to keep supporting material visible as you read the main article.'],
     ['Supplementary methods','Reading checklist','Identify the research question and the evidence supporting the central claim. Check whether the methods describe relevant controls, sample sizes, exclusions, and statistical assumptions.','Compare the main figure with the supplementary tables. Distinguish observed results from interpretations. Record unresolved questions as notes so they are available in future reading sessions.']
   ]:chapters;
-  pdf.setTitle(supplement?'Folio · Supplementary materials':'Folio · A workspace for a closer reading');pdf.setAuthor('Folio');pdf.setSubject('Demonstration document, not a published study');
+  pdf.setTitle(supplement?'Pairleaf · Supplementary materials':'Pairleaf · A workspace for a closer reading');pdf.setAuthor('Pairleaf');pdf.setSubject('Demonstration document, not a published study');
   for(const [index,chapter]of content.entries()){
     const page=pdf.addPage([595,842]);page.drawText('F O L I O   /   R E A D I N G   S T U D I O',{x:58,y:793,size:9,font:bold,color:rgb(.23,.38,.3)});
     page.drawLine({start:{x:58,y:775},end:{x:537,y:775},thickness:.7,color:rgb(.8,.83,.8)});
@@ -50,6 +50,6 @@ async function makeDocument(supplement:boolean){
   return exportAnnotatedPdf(await pdf.save(),doc);
 }
 export async function writeDemo(directory:string){
-  await fs.mkdir(directory,{recursive:true});const main=path.join(directory,'Folio - A closer reading.pdf'),supp=path.join(directory,'Supplementary materials.pdf');
+  await fs.mkdir(directory,{recursive:true});const main=path.join(directory,'Pairleaf - A closer reading.pdf'),supp=path.join(directory,'Supplementary materials.pdf');
   await fs.writeFile(main,await makeDocument(false));await fs.writeFile(supp,await makeDocument(true));return [main,supp];
 }

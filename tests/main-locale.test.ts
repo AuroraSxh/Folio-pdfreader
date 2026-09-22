@@ -24,6 +24,7 @@ async function harness(t: test.TestContext, platform: NodeJS.Platform = 'darwin'
   const library = new storeModule.LibraryStore(path.join(directory, 'Library')); await library.init();
   const handlers = new Map<string, (...args: any[]) => any>(), menus: any[][] = [], dialogs: any[] = [], sent: any[][] = [], opened: string[] = [], revealed: string[] = [], calls: string[] = [], timers: { callback: () => void; delay: number }[] = [];
   let quits = 0, updateHost: any, openError = '';
+  const identity: { name?: string; paths: Record<string, string>; about?: unknown } = { paths: {} };
   const voiceCalls: any[] = []; let voiceInstances = 0;
   const voiceFactory = (options: any) => { voiceInstances++; return { capabilities: async (locale: string) => { voiceCalls.push(['capabilities', locale]); return { available:true,engine:'speech-analyzer',locales:['zh-CN'],voices:[] }; }, listen: async (value: any) => { voiceCalls.push(['listen', value]); options.emit({sessionId:value.sessionId,type:'listening'}); }, stopListening: async (id: string) => { voiceCalls.push(['stop',id]);return {text:'测试'}; }, speak: async (value: any) => { voiceCalls.push(['speak',value]); }, stopSpeaking: async () => { voiceCalls.push(['stop-speaking']); }, dispose: async () => { voiceCalls.push(['dispose']); } }; };
   const status: UpdateStatus = { phase: 'idle', currentVersion: '0.3.0' };
@@ -32,7 +33,7 @@ async function harness(t: test.TestContext, platform: NodeJS.Platform = 'darwin'
   const webContents = { mainFrame, send: (...args: any[]) => sent.push(args) };
   const window = { webContents, isDestroyed: () => false };
   const electron = {
-    app: { setName() {}, setPath() {}, getPath: () => directory, getVersion: () => '0.3.0', requestSingleInstanceLock: () => true, setAppUserModelId() {}, on() {}, quit: () => { quits++; }, whenReady: () => new Promise(() => {}), isPackaged: !!options.packaged },
+    app: { setName(name: string) { identity.name = name; }, setPath(name: string, value: string) { identity.paths[name] = value; }, setAboutPanelOptions(value: unknown) { identity.about = value; }, getPath: () => directory, getVersion: () => '0.3.0', requestSingleInstanceLock: () => true, setAppUserModelId() {}, on() {}, quit: () => { quits++; }, whenReady: () => new Promise(() => {}), isPackaged: !!options.packaged },
     BrowserWindow: class { constructor() { throw new Error('GUI must not launch in backend tests'); } },
     clipboard: {}, ipcMain: { on() {}, handle: (channel: string, callback: (...args: any[]) => any) => handlers.set(channel, callback) },
     Menu: { buildFromTemplate: (template: any[]) => template, setApplicationMenu: (menu: any[]) => menus.push(menu) },
@@ -46,8 +47,19 @@ async function harness(t: test.TestContext, platform: NodeJS.Platform = 'darwin'
   main.testMain.setState({ settings, library, window, ai: { cancelWorkspace: async (id: string) => { calls.push(`cancel-ai:${id}`); } } });
   main.testMain.initializeUpdater(); main.testMain.registerIPC(); main.testMain.makeMenu();
   const invoke = (name: string, ...args: any[]) => handlers.get(`folio:${name}`)!({ sender: webContents, senderFrame: mainFrame }, ...args);
-  return { directory, settings, library, voiceCalls, voiceInstances: () => voiceInstances, handlers, main: main.testMain, menus, dialogs, sent, opened, revealed, calls, timers, updater, updateHost: () => updateHost, quits: () => quits, openError: (error: string) => { openError = error; }, invoke };
+  return { directory, identity, settings, library, voiceCalls, voiceInstances: () => voiceInstances, handlers, main: main.testMain, menus, dialogs, sent, opened, revealed, calls, timers, updater, updateHost: () => updateHost, quits: () => quits, openError: (error: string) => { openError = error; }, invoke };
 }
+
+test('Pairleaf keeps the Folio storage identity on both platforms and honors isolated test profiles', async t => {
+  for (const platform of ['darwin', 'win32'] as const) {
+    const regular = await harness(t, platform, { packaged: true });
+    assert.equal(regular.identity.name, 'Folio');
+    assert.equal(regular.identity.paths.userData, path.join(regular.directory, 'Folio'));
+    assert.deepEqual(regular.identity.about, { applicationName: 'Pairleaf' });
+    const isolated = await harness(t, platform, { packaged: true, isolated: true });
+    assert.equal(isolated.identity.paths.userData, isolated.directory);
+  }
+});
 
 test('saving language rebuilds actual native menus immediately, including edit roles, and failed saves keep the menu', async t => {
   const h = await harness(t); assert.equal(h.menus[0][2].label, '编辑');

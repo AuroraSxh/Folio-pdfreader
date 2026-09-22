@@ -123,7 +123,7 @@ try {
 
   // Exercise the updater UI with test IPC handlers only. No network or installer.
   await app.evaluate(({ ipcMain, BrowserWindow, app }) => {
-    const release = { version: '9.9.9', url: 'https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v9.9.9', notes: 'Test release', publishedAt: '2026-09-22T00:00:00Z', assetName: 'Folio-9.9.9-mac-universal.dmg', size: 100, downloadable: true };
+    const release = { version: '9.9.9', url: 'https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v9.9.9', notes: 'Test release', publishedAt: '2026-09-22T00:00:00Z', assetName: 'Pairleaf-9.9.9-mac-universal.dmg', size: 100, downloadable: true };
     const send = status => BrowserWindow.getAllWindows()[0].webContents.send('folio:update', status);
     let current = { phase: 'idle', currentVersion: app.getVersion() };
     for (const channel of ['update-status', 'check-updates', 'download-update', 'install-update']) ipcMain.removeHandler('folio:' + channel);

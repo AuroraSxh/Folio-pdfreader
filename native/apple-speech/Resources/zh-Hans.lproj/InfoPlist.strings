@@ -1,3 +1,3 @@
-"CFBundleDisplayName" = "Folio 语音";
-"NSMicrophoneUsageDescription" = "Folio 仅在你开始语音对话时使用麦克风，在这台 Mac 上把你的问题转为文字。";
-"NSSpeechRecognitionUsageDescription" = "Folio 使用 Apple 语音识别将你的语音问题转为文字，仅启用本机识别。";
+"CFBundleDisplayName" = "Pairleaf 语音";
+"NSMicrophoneUsageDescription" = "Pairleaf 仅在你开始语音对话时使用麦克风，在这台 Mac 上把你的问题转为文字。";
+"NSSpeechRecognitionUsageDescription" = "Pairleaf 使用 Apple 语音识别将你的语音问题转为文字，仅启用本机识别。";

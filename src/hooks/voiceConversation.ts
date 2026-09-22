@@ -12,6 +12,8 @@ export interface VoicePreferences {
   rate: number;
 }
 export const VOICE_PREVIEW_TEXT = '这篇论文分析 CD4+ T cells，并比较 fl/fl 小鼠。The results need further validation.';
+const CHINESE_PREVIEW_TEXT = '这项研究比较两组小鼠，分析免疫细胞的变化。结果还需要进一步验证。';
+const ENGLISH_PREVIEW_TEXT = 'This paper studies CD4+ T cells and compares fl/fl mice. The results need further validation.';
 export interface VoiceState {
   active: boolean; phase: VoicePhase; transcript: string; error?: string;
   preferences: VoicePreferences; capabilities?: VoiceCapabilities;
@@ -67,6 +69,15 @@ export function createVoiceConversation(options: Options) {
   const clearSilence = () => { if (timer !== null) clear(timer); timer = null; };
   const clearIdle = () => { if (idleTimer !== null) clear(idleTimer); idleTimer = null; };
   const valid = (token: number) => epoch === token && state.active;
+
+  function armNoSpeechTimeout() {
+    if (idleTimer !== null) return;
+    const token = epoch, sessionId = listenId;
+    idleTimer = schedule(() => {
+      idleTimer = null;
+      if (valid(token) && listenId === sessionId && state.phase === 'listening' && !state.transcript.trim()) void halt('paused', true, 'no-speech');
+    }, 60_000);
+  }
 
   function halt(phase: VoicePhase, active: boolean, error?: string) {
     ++epoch;
@@ -139,7 +150,9 @@ export function createVoiceConversation(options: Options) {
       const final = await api.voiceStopListening(sessionId);
       if (!valid(token) || listenId !== sessionId) return;
       listenId = null;
-      const text = (final.text || state.transcript).trim();
+      // A successful native stop is authoritative, including a rejected/empty
+      // hypothesis. Restoring the visible draft here can submit rejected noise.
+      const text = final.text.trim();
       if (!text) { await listen(token); return; }
       publish({ transcript: text });
       const blocked = options.ready();
@@ -188,7 +201,15 @@ export function createVoiceConversation(options: Options) {
     const token = epoch;
     await pending;
     if (!valid(token)) return;
-    const plan = buildSpeechPlan(VOICE_PREVIEW_TEXT, state.preferences);
+    const voices = state.capabilities?.voices ?? [];
+    const chinese = voices.some(voice => /^zh(?:-|$)/i.test(voice.language));
+    const english = voices.some(voice => /^en(?:-|$)/i.test(voice.language));
+    const sampleLocale = state.preferences.readingMode !== 'auto' ? state.preferences.readingMode
+      : chinese && !english ? 'zh-CN' : english && !chinese ? 'en-US' : undefined;
+    const sample = sampleLocale === 'zh-CN' ? CHINESE_PREVIEW_TEXT : sampleLocale === 'en-US' ? ENGLISH_PREVIEW_TEXT : VOICE_PREVIEW_TEXT;
+    // Adapt only the disposable sample. Saved voice IDs and the answer's normal
+    // reading mode remain untouched, including explicit unavailable selections.
+    const plan = buildSpeechPlan(sample, state.preferences);
     const sessionId = id(); speechId = sessionId; playback = 'preview';
     try {
       const starting = api.voiceSpeak({ sessionId, ...plan, rate: state.preferences.rate });
@@ -204,15 +225,17 @@ export function createVoiceConversation(options: Options) {
       if (event.type === 'error') { fail(epoch, event.code || 'recognition-failed'); return; }
       if (event.type === 'listening' && state.phase === 'starting') {
         publish({ phase: 'listening' });
-        const token = epoch;
-        idleTimer = schedule(() => { idleTimer = null; if (valid(token) && state.phase === 'listening' && !state.transcript.trim()) void halt('paused', true, 'no-speech'); }, 60_000);
+        armNoSpeechTimeout();
       }
       if ((event.type === 'partial' || event.type === 'final') && ['starting', 'listening'].includes(state.phase)) {
         const text = event.text ?? '';
         if (text === state.transcript) return;
         publish({ transcript: text }); clearSilence();
-        if (text.trim()) clearIdle();
-        if (text.trim()) { const token = epoch, sessionId = listenId; timer = schedule(() => { timer = null; void finishTurn(token, sessionId); }, 1400); }
+        if (text.trim()) {
+          clearIdle();
+          const token = epoch, sessionId = listenId;
+          timer = schedule(() => { timer = null; void finishTurn(token, sessionId); }, 1400);
+        } else armNoSpeechTimeout(); // SAPI may reject a previously nonempty hypothesis.
       }
     } else if (event.sessionId === speechId) {
       if (event.type === 'error') { fail(epoch, event.code || 'synthesis-failed'); return; }

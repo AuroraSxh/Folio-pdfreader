@@ -1,8 +1,8 @@
 {
   "name": "folio-paper-reader",
-  "version": "0.4.1",
-  "description": "A local-first academic PDF workspace with DeepSeek and Obsidian",
-  "author": "Folio",
+  "version": "0.5.0",
+  "description": "A local-first academic PDF workspace with side-by-side reading and an AI companion",
+  "author": "Pairleaf",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.cjs",
@@ -16,13 +16,15 @@
     "package:mac": "npm run build && electron-builder --mac dir",
     "dist:mac": "npm run build && electron-builder --mac zip --arm64",
     "dist:dmg": "npm run build && electron-builder --mac dmg --universal",
-    "package:win": "npm run build && electron-builder --win dir --x64",
-    "dist:win": "npm run build && electron-builder --win --x64",
+    "package:win": "npm run build && npm run build:windows-speech && electron-builder --win dir --x64",
+    "dist:win": "npm run build && npm run build:windows-speech && electron-builder --win --x64",
     "test:win-package": "node scripts/verify-windows.mjs",
     "test:reading": "node scripts/e2e-reading.mjs",
     "test:locale": "node scripts/e2e-locale.mjs",
     "test:voice": "node scripts/e2e-voice.mjs",
-    "test:chat-deletion": "node scripts/e2e-chat-deletion.mjs"
+    "test:chat-deletion": "node scripts/e2e-chat-deletion.mjs",
+    "build:windows-speech": "node scripts/build-windows-speech.mjs",
+    "test:windows-speech": "node native/windows-speech/Tests/run.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.577.0",
@@ -49,9 +51,9 @@
   },
   "build": {
     "appId": "com.folio.paperreader",
-    "productName": "Folio",
+    "productName": "Pairleaf",
     "directories": {
-      "output": "release/v0.4.1"
+      "output": "release/v0.5.0"
     },
     "files": [
       "dist/**/*",
@@ -60,7 +62,8 @@
       "LICENSE",
       "THIRD_PARTY_LICENSES.txt",
       "!node_modules/**/*",
-      "!dist-electron/apple-speech/**/*"
+      "!dist-electron/apple-speech/**/*",
+      "!dist-electron/windows-speech/**/*"
     ],
     "asar": true,
     "mac": {
@@ -88,15 +91,15 @@
         }
       ],
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Folio uses the microphone only when you start a voice conversation. \u70b9\u51fb\u5f00\u59cb\u8bed\u97f3\u5bf9\u8bdd\u540e\uff0cFolio \u624d\u4f1a\u4f7f\u7528\u9ea6\u514b\u98ce\u3002",
-        "NSSpeechRecognitionUsageDescription": "Folio uses Apple speech recognition to turn your spoken questions into chat messages. Folio \u4f7f\u7528 Apple \u8bed\u97f3\u8bc6\u522b\u5c06\u4f60\u7684\u63d0\u95ee\u8f6c\u6362\u4e3a\u5bf9\u8bdd\u6587\u5b57\u3002"
+        "NSMicrophoneUsageDescription": "Pairleaf uses the microphone only when you start a voice conversation. \u70b9\u51fb\u5f00\u59cb\u8bed\u97f3\u5bf9\u8bdd\u540e\uff0cPairleaf \u624d\u4f1a\u4f7f\u7528\u9ea6\u514b\u98ce\u3002",
+        "NSSpeechRecognitionUsageDescription": "Pairleaf uses Apple speech recognition to turn your spoken questions into chat messages. Pairleaf \u4f7f\u7528 Apple \u8bed\u97f3\u8bc6\u522b\u5c06\u4f60\u7684\u63d0\u95ee\u8f6c\u6362\u4e3a\u5bf9\u8bdd\u6587\u5b57\u3002"
       },
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "dmg": {
-      "title": "Folio",
-      "artifactName": "Folio-${version}-mac-universal.${ext}",
+      "title": "Pairleaf",
+      "artifactName": "Pairleaf-${version}-mac-universal.${ext}",
       "window": {
         "width": 540,
         "height": 380
@@ -137,9 +140,20 @@
         }
       ],
       "icon": "build/icon.ico",
-      "signExecutable": false
+      "signExecutable": false,
+      "extraResources": [
+        {
+          "from": "dist-electron/windows-speech",
+          "to": "windows-speech",
+          "filter": [
+            "PairleafSpeech.exe",
+            "PairleafSpeech.exe.config"
+          ]
+        }
+      ]
     },
     "nsis": {
+      "include": "build/installer.nsh",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
@@ -150,10 +164,10 @@
         "en_US",
         "zh_CN"
       ],
-      "artifactName": "Folio-${version}-windows-${arch}-setup.${ext}"
+      "artifactName": "Pairleaf-${version}-windows-${arch}-setup.${ext}"
     },
     "portable": {
-      "artifactName": "Folio-${version}-windows-${arch}-portable.${ext}"
+      "artifactName": "Pairleaf-${version}-windows-${arch}-portable.${ext}"
     },
     "fileAssociations": [
       {

@@ -15,7 +15,7 @@ const ERROR_CODES = new Set<VoiceErrorCode>([
 ]);
 const EVENT_TYPES = new Set<VoiceEvent['type']>(['partial', 'final', 'listening', 'speech-start', 'speech-end', 'error']);
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const VOICE_ID = /^com\.apple\.[A-Za-z0-9._-]{1,245}$/;
+const VOICE_ID = /^(?:com\.apple\.[A-Za-z0-9._-]{1,245}|windows\.sapi\.[a-f0-9]{64})$/;
 
 export class VoiceServiceError extends Error {
   constructor(readonly code: VoiceErrorCode) { super(`[${code}]`); this.name = 'VoiceServiceError'; }
@@ -88,7 +88,7 @@ function noCapabilities(reason: VoiceErrorCode): VoiceCapabilities {
 function capabilitiesResult(value: unknown): VoiceCapabilities {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new VoiceServiceError('protocol-error');
   const data = value as Record<string, unknown>;
-  if (typeof data.available !== 'boolean' || !['speech-analyzer', 'speech-recognizer', 'unsupported'].includes(String(data.engine))
+  if (typeof data.available !== 'boolean' || !['speech-analyzer', 'speech-recognizer', 'windows-speech', 'unsupported'].includes(String(data.engine))
     || !Array.isArray(data.locales) || data.locales.length > 512 || !Array.isArray(data.voices) || data.voices.length > 1024
     || (data.needsModelDownload !== undefined && typeof data.needsModelDownload !== 'boolean')) throw new VoiceServiceError('protocol-error');
   try {
@@ -108,7 +108,7 @@ function capabilitiesResult(value: unknown): VoiceCapabilities {
   } catch { throw new VoiceServiceError('protocol-error'); }
 }
 
-/** A lazy, single-job supervisor. The helper alone owns Apple's permissions and audio APIs. */
+/** A lazy, single-job supervisor. The platform helper alone owns permissions and audio APIs. */
 export function createVoiceService(host: VoiceHost): VoiceService {
   const platform = host.platform ?? process.platform;
   const spawnProcess: VoiceSpawn = host.spawn ?? ((file, args, options) => nodeSpawn(file, args, options));
@@ -202,7 +202,7 @@ export function createVoiceService(host: VoiceHost): VoiceService {
 
   async function ensureHelper(): Promise<Helper> {
     if (disposed) throw new VoiceServiceError('disposed');
-    if (platform !== 'darwin') throw new VoiceServiceError('unsupported');
+    if (platform !== 'darwin' && platform !== 'win32') throw new VoiceServiceError('unsupported');
     while (helper?.closing) { await helper.exited; if (disposed) throw new VoiceServiceError('disposed'); }
     if (helper && !helper.closed) { clearTimeout(helper.idleTimer); helper.idleTimer = undefined; return helper; }
     if (!path.isAbsolute(host.helperPath) || host.helperPath.includes('\0') || host.helperPath.length > 4096) throw new VoiceServiceError('helper-unavailable');
@@ -210,7 +210,12 @@ export function createVoiceService(host: VoiceHost): VoiceService {
     try {
       // The helper needs local OS context, not inherited API credentials or arbitrary shell setup.
       const env: NodeJS.ProcessEnv = {};
-      for (const key of ['HOME', 'TMPDIR', 'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', '__CF_USER_TEXT_ENCODING']) if (process.env[key] !== undefined) env[key] = process.env[key];
+      const permitted = platform === 'win32'
+        ? new Set(['systemroot', 'windir', 'systemdrive', 'path', 'temp', 'tmp', 'userprofile', 'appdata', 'localappdata', 'programdata', 'programfiles', 'programfiles(x86)', 'commonprogramfiles', 'commonprogramfiles(x86)'])
+        : new Set(['home', 'tmpdir', 'path', 'lang', 'lc_all', 'lc_ctype', '__cf_user_text_encoding']);
+      // Windows environment keys are case-insensitive (Path vs PATH). .NET and
+      // SAPI need the system/user profile paths, never inherited API secrets.
+      for (const [key, value] of Object.entries(process.env)) if (value !== undefined && permitted.has(key.toLowerCase())) env[key] = value;
       child = spawnProcess(host.helperPath, [], { shell: false, windowsHide: true, stdio: 'pipe', env });
     } catch { throw new VoiceServiceError('helper-unavailable'); }
     let resolveExit!: () => void;
@@ -268,7 +273,7 @@ export function createVoiceService(host: VoiceHost): VoiceService {
 
   function start(mode: Job['mode'], fields: VoiceListenOptions | VoiceSpeakOptions): Promise<void> {
     if (disposed) return Promise.reject(new VoiceServiceError('disposed'));
-    if (platform !== 'darwin') return Promise.reject(new VoiceServiceError('unsupported'));
+    if (platform !== 'darwin' && platform !== 'win32') return Promise.reject(new VoiceServiceError('unsupported'));
     if (active) return active.mode === mode && active.sessionId === fields.sessionId && active.phase !== 'stopping' ? active.startPromise : Promise.reject(new VoiceServiceError('busy'));
     let resolveReady!: Job['resolveReady'];
     const job: Job = { mode, sessionId: fields.sessionId, phase: 'starting', lastText: '', cancelled: false, startPromise: Promise.resolve(), ready: new Promise(resolve => { resolveReady = resolve; }), resolveReady: value => resolveReady(value) };
@@ -309,7 +314,9 @@ export function createVoiceService(host: VoiceHost): VoiceService {
         if (job.mode === 'speak') return { text: '' };
         try {
           if (!result || typeof result !== 'object' || Array.isArray(result)) throw new VoiceServiceError('protocol-error');
-          const text = transcript((result as Record<string, unknown>).text) || job.lastText;
+          // Empty is authoritative: a recognizer can reject its last hypothesis
+          // while the stop command is in flight. Never revive that stale draft.
+          const text = transcript((result as Record<string, unknown>).text);
           lastStopped = { sessionId: job.sessionId, text };
           return { text };
         } catch { void retire(record, 'protocol-error'); throw new VoiceServiceError('protocol-error'); }
@@ -327,7 +334,7 @@ export function createVoiceService(host: VoiceHost): VoiceService {
   return {
     capabilities(requestedLocale) {
       if (disposed) return Promise.resolve(noCapabilities('disposed'));
-      if (platform !== 'darwin') return Promise.resolve(noCapabilities('unsupported'));
+      if (platform !== 'darwin' && platform !== 'win32') return Promise.resolve(noCapabilities('unsupported'));
       let normalized: string | undefined;
       try { normalized = requestedLocale === undefined ? undefined : locale(requestedLocale); } catch { return Promise.resolve(noCapabilities('invalid-request')); }
       const key = normalized ?? '';

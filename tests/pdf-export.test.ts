@@ -29,7 +29,7 @@ test('exported PDF independently parses Unicode nested bookmarks, valid page des
   const childDestination=outline[0].items[0].dest as unknown as {num:number;gen:number}[];assert.equal(await read.pdf.getPageIndex(childDestination[0]),1);
   const first=await read.pdf.getPage(1),second=await read.pdf.getPage(2);assert.equal(first.rotate,0);assert.equal(second.rotate,270);
   const annotations=await first.getAnnotations();assert.equal(annotations.length,2);
-  const highlight=annotations.find(annotation=>annotation.subtype==='Highlight')!;assert.ok(highlight);assert.match(highlight.contentsObj.str,/关键实验结果/);assert.match(highlight.contentsObj.str,/需要核对补充图/);assert.equal(highlight.titleObj.str,'Folio');
+  const highlight=annotations.find(annotation=>annotation.subtype==='Highlight')!;assert.ok(highlight);assert.match(highlight.contentsObj.str,/关键实验结果/);assert.match(highlight.contentsObj.str,/需要核对补充图/);assert.equal(highlight.titleObj.str,'Pairleaf');
   assert.deepEqual(highlight.rect,[20,60,90,80]);assert.equal(highlight.quadPoints.length,16);assert.deepEqual([...highlight.color],[255,204,51]);
   assert.ok(annotations.some(annotation=>annotation.contentsObj.str==='Original note'));
   // The imported original remains readable with its untouched rotation and bookmark.

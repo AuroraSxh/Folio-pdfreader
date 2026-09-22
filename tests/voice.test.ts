@@ -93,7 +93,7 @@ test('capabilities lazily spawn a no-shell helper, request no permissions, and s
 });
 
 test('unsupported platforms never spawn and malformed input never reaches native commands', async t => {
-  const unsupported = fixture(t, { platform: 'win32' });
+  const unsupported = fixture(t, { platform: 'linux' });
   assert.deepEqual(await unsupported.service.capabilities(), { available: false, engine: 'unsupported', reason: 'unsupported', locales: [], voices: [] });
   await assert.rejects(unsupported.service.listen({ sessionId: 'one', locale: 'en-US' }), code('unsupported'));
   assert.equal(unsupported.children.length, 0);
@@ -372,4 +372,63 @@ test('malformed speech plans never spawn the helper, and large valid plans remai
   const text = 'a'.repeat(MAX_VOICE_TEXT_BYTES);
   await f.service.speak({ sessionId: 'large', text, locale: 'en-US', segments: [{ text, locale: 'en-US' }] });
   assert.equal(f.children[0].commands.filter(c => c.command === 'speak').length, 1);
+});
+
+test('Windows system speech uses the same lazy, cancellable protocol without inheriting credentials', async t => {
+  const voiceId = 'windows.sapi.' + 'a'.repeat(64);
+  const capabilities: VoiceCapabilities = { available: true, engine: 'windows-speech', locales: ['zh-CN', 'en-US'], voices: [{ id: voiceId, name: 'Installed Windows voice', language: 'en-US', quality: 'default' }], needsModelDownload: false };
+  const values = { SystemRoot: 'C:\\Windows', USERPROFILE: 'C:\\Users\\Test', FOLIO_TEST_API_SECRET: 'never-inherit-this-test-value' };
+  const previous = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
+  Object.assign(process.env, values);
+  t.after(() => { for (const key of Object.keys(values)) { if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key]; } });
+  const f = fixture(t, { platform: 'win32', helperPath: '/test/windows-speech/PairleafSpeech.exe', handler: (command, helper) => {
+    if (command.command === 'capabilities') helper.ack(command, capabilities); else helper.defaultReply(command);
+  } });
+  assert.equal(f.children.length, 0);
+  assert.deepEqual(await f.service.capabilities('en-US'), capabilities);
+  assert.deepEqual(f.children[0].commands.map(command => command.command), ['capabilities']);
+  assert.equal(f.invocations[0].options.windowsHide, true);
+  assert.equal(f.invocations[0].options.shell, false);
+  assert.equal(f.invocations[0].options.env!.SystemRoot, values.SystemRoot);
+  assert.equal(f.invocations[0].options.env!.USERPROFILE, values.USERPROFILE);
+  assert.equal(f.invocations[0].options.env!.FOLIO_TEST_API_SECRET, undefined);
+  await f.service.listen({ sessionId: 'windows-listen', locale: 'en-US' });
+  f.children[0].event({ sessionId: 'windows-listen', type: 'partial', text: 'Explain this figure' });
+  assert.deepEqual(await f.service.stopListening('windows-listen'), { text: 'Explain this figure' });
+  const eventCount = f.events.length;
+  f.children[0].event({ sessionId: 'windows-listen', type: 'final', text: 'Late recording must be ignored' });
+  assert.equal(f.events.length, eventCount);
+  await f.service.speak({ sessionId: 'windows-speak', locale: 'en-US', text: 'CD 4 positive', voiceId, rate: 0.5, segments: [{ text: 'CD 4 positive', locale: 'en-US', voiceId, pauseAfter: 0.1 }] });
+  assert.equal(f.children[0].commands.at(-1)?.voiceId, voiceId);
+  await f.service.stopSpeaking();
+  await f.service.dispose();
+  assert.equal(f.children[0].closed, true);
+});
+
+test('Windows can expose installed TTS voices when local dictation is absent and rejects malformed voice IDs', async t => {
+  const voiceId = 'windows.sapi.' + 'b'.repeat(64);
+  const capabilities: VoiceCapabilities = { available: false, engine: 'windows-speech', reason: 'recognizer-unavailable', locales: [], voices: [{ id: voiceId, name: 'Windows TTS', language: 'en-US' }], needsModelDownload: false };
+  const f = fixture(t, { platform: 'win32', handler: (command, helper) => {
+    if (command.command === 'capabilities') helper.ack(command, capabilities); else helper.defaultReply(command);
+  } });
+  assert.deepEqual(await f.service.capabilities('zh-CN'), capabilities);
+  const count = f.children[0].commands.length;
+  await assert.rejects(f.service.speak({ sessionId: 'invalid-voice', locale: 'en-US', text: 'sample', voiceId: 'windows.sapi.../../executable' }), code('invalid-request'));
+  assert.equal(f.children[0].commands.length, count);
+  await f.service.speak({ sessionId: 'tts-only', locale: 'en-US', text: 'sample', voiceId });
+  assert.equal(f.events.at(-1)?.type, 'speech-start');
+});
+
+test('successful empty Windows stop result does not restore a rejected hypothesis from before stopping', async t => {
+  const f = fixture(t, { platform: 'win32', handler: (command, helper) => {
+    if (command.command === 'stop-listening') {
+      helper.event({ sessionId: command.sessionId!, type: 'partial', text: '' });
+      helper.ack(command, { text: '' });
+    } else helper.defaultReply(command);
+  } });
+  await f.service.listen({ sessionId: 'rejected', locale: 'en-US' });
+  f.children[0].event({ sessionId: 'rejected', type: 'partial', text: 'rejected background noise' });
+  assert.deepEqual(await f.service.stopListening('rejected'), { text: '' });
+  assert.deepEqual(await f.service.stopListening('rejected'), { text: '' });
+  assert.equal(f.events.at(-1)?.text, 'rejected background noise', 'the old stop-phase event stays filtered; the ACK supplies the authoritative final result');
 });

@@ -53,8 +53,9 @@ export function compareVersions(left: string, right: string): number {
 
 export function updateAssetName(version: string, platform: NodeJS.Platform, arch: string, portable = false): string | undefined {
   if (parseVersion(version).pre.length) throw new UpdateFailure('invalid-release');
-  if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) return `Folio-${version}-mac-universal.dmg`;
-  if (platform === 'win32' && arch === 'x64') return `Folio-${version}-windows-x64-${portable ? 'portable' : 'setup'}.exe`;
+  const product = compareVersions(version, '0.5.0') >= 0 ? 'Pairleaf' : 'Folio';
+  if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) return `${product}-${version}-mac-universal.dmg`;
+  if (platform === 'win32' && arch === 'x64') return `${product}-${version}-windows-x64-${portable ? 'portable' : 'setup'}.exe`;
   return undefined;
 }
 
@@ -103,12 +104,18 @@ function releaseCandidate(raw: unknown, host: UpdateHost): Candidate {
   if (typeof data.published_at !== 'string' || !Number.isFinite(Date.parse(data.published_at))
     || !Array.isArray(data.assets) || data.assets.length > 200 || (data.body !== null && data.body !== undefined && typeof data.body !== 'string')) throw new UpdateFailure('invalid-release');
   const release: UpdateRelease = { version, url, notes: typeof data.body === 'string' ? data.body.slice(0, 24_000) : '', publishedAt: data.published_at, downloadable: false };
-  const name = updateAssetName(version, host.platform, host.arch, host.portable);
-  if (!name) return { release, problem: 'unsupported-platform' };
-  const matches = data.assets.filter((asset: unknown) => asset && typeof asset === 'object' && (asset as Record<string, unknown>).name === name);
-  if (!matches.length) return { release, problem: 'missing-asset' };
-  if (matches.length !== 1) throw new UpdateFailure('invalid-release');
-  const asset = matches[0] as Record<string, unknown>;
+  const canonical = updateAssetName(version, host.platform, host.arch, host.portable);
+  if (!canonical) return { release, problem: 'unsupported-platform' };
+  // Releases from the rename onwards may publish an exact Folio alias for old
+  // clients. Prefer canonical metadata; never bypass invalid canonical metadata
+  // by silently selecting the alias. Neither accepted name may be duplicated.
+  const names = canonical.startsWith('Pairleaf-') ? [canonical, canonical.replace(/^Pairleaf-/, 'Folio-')] : [canonical];
+  const assets = data.assets;
+  const matches = names.map(name => assets.filter((asset: unknown) => asset && typeof asset === 'object' && (asset as Record<string, unknown>).name === name));
+  if (matches.some(group => group.length > 1)) throw new UpdateFailure('invalid-release');
+  const asset = matches.flat()[0] as Record<string, unknown> | undefined;
+  if (!asset) return { release, problem: 'missing-asset' };
+  const name = asset.name as string;
   release.assetName = name;
   if (asset.state !== 'uploaded' || !Number.isSafeInteger(asset.size) || (asset.size as number) <= 0
     || !Number.isSafeInteger(asset.id) || (asset.id as number) <= 0) throw new UpdateFailure('invalid-release');
@@ -185,7 +192,7 @@ export function createUpdateService(host: UpdateHost): UpdateService {
       if (asset) validateDownloadURL(next, asset.url); else exactURL(next, API_URL);
       const response = await withAbort(fetcher(next, {
         method: 'GET', redirect: 'manual', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', signal: op.controller.signal,
-        headers: { Accept: asset ? 'application/octet-stream' : 'application/vnd.github+json', 'User-Agent': 'Folio-Updater', 'X-GitHub-Api-Version': '2026-03-10' },
+        headers: { Accept: asset ? 'application/octet-stream' : 'application/vnd.github+json', 'User-Agent': 'Pairleaf-Updater', 'X-GitHub-Api-Version': '2026-03-10' },
       }), op.controller.signal);
       try {
         // Even injected fetch implementations must report their actual response URL.
