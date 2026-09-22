@@ -1,0 +1,3 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+export default defineConfig({ plugins: [react(), {name:'dev-csp',apply:'serve',transformIndexHtml:html=>html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/,'')}], base: './', server: { host: '127.0.0.1', port: 5178, strictPort: true }, build: { chunkSizeWarningLimit: 2200 } });

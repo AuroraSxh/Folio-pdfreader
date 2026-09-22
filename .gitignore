@@ -1,0 +1,50 @@
+node_modules/
+dist/
+dist-electron/
+release/
+test-results/
+coverage/
+.cache/
+.DS_Store
+*.tsbuildinfo
+public/pdf-assets/
+
+# Local credentials and provider configuration (including encrypted API keys).
+.env
+.env.*
+!.env.example
+.npmrc
+.netrc
+credentials*.json
+secrets*.json
+settings.json
+settings.*.json
+*.key
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+
+# Personal libraries, exports, logs, and generated installers.
+workspace.json
+user-data/
+Folio Library/
+*.pdf
+*.zip
+*.dmg
+*.exe
+*.blockmap
+*.log
+logs/
+*.sqlite*
+*.db
+
+# Local assistant/editor context is not part of the public project.
+MEMORY.md
+AGENTS.md
+.codex/
+.claude/
+.mcp.json
+.idea/
+.vscode/
+build/icon.iconset/

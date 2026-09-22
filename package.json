@@ -1,0 +1,144 @@
+{
+  "name": "folio-paper-reader",
+  "version": "0.2.2",
+  "description": "A local-first academic PDF workspace with DeepSeek and Obsidian",
+  "author": "Folio",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "start": "electron .",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "node scripts/e2e.mjs",
+    "package:mac": "npm run build && electron-builder --mac dir",
+    "dist:mac": "npm run build && electron-builder --mac zip --arm64",
+    "dist:dmg": "npm run build && electron-builder --mac dmg --universal",
+    "package:win": "npm run build && electron-builder --win dir --x64",
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "test:win-package": "node scripts/verify-windows.mjs",
+    "test:reading": "node scripts/e2e-reading.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^0.577.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "6.3.289",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "latest",
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3",
+    "esbuild": "latest",
+    "playwright": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vite": "8.3.0"
+  },
+  "build": {
+    "appId": "com.folio.paperreader",
+    "productName": "Folio",
+    "directories": {
+      "output": "release/v0.2.2"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "LICENSE",
+      "THIRD_PARTY_LICENSES.txt",
+      "!node_modules/**/*"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.education",
+      "identity": "-",
+      "target": [
+        "zip"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "dmg": {
+      "title": "Folio",
+      "artifactName": "Folio-${version}-mac-universal.${ext}",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 130,
+          "y": 170
+        },
+        {
+          "x": 410,
+          "y": 170,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 270,
+          "y": 290,
+          "type": "file",
+          "path": "build/INSTALL-mac.txt",
+          "name": "安装说明.txt"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "en_US",
+        "zh_CN"
+      ],
+      "artifactName": "Folio-${version}-windows-${arch}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "Folio-${version}-windows-${arch}-portable.${ext}"
+    },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF Document",
+        "role": "Viewer"
+      }
+    ]
+  },
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AuroraSxh/Folio-pdfreader.git"
+  }
+}
