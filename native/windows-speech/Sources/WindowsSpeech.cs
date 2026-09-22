@@ -145,7 +145,9 @@ namespace Pairleaf.Speech
                 catch { throw new SpeechFailure("voice-unavailable", "The selected Windows voice is unavailable."); }
                 if (WindowsSpeechPlatform.StableVoiceId(synth.Voice.Id) != segment.Voice.Id)
                     throw new SpeechFailure("voice-unavailable", "The selected Windows voice is unavailable.");
-                prompt.StartVoice(segment.Voice.Name);
+                // Preserve both name and language; a name-only VoiceInfo would
+                // inherit the first segment's language for later English text.
+                prompt.StartVoice(synth.Voice);
                 prompt.AppendText(segment.Text);
                 if (segment.Pause > 0) prompt.AppendBreak(TimeSpan.FromSeconds(segment.Pause));
                 prompt.EndVoice();
