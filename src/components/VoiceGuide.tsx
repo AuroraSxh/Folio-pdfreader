@@ -10,6 +10,7 @@ export default function VoiceGuide() {
       <h4>{t('开始与结束', 'Start and stop')}</h4>
       <p>{t('语音默认关闭，启动 Folio 或重新打开文章不会自动开启。点击「语音」只打开选项；点击「开始聆听」才使用麦克风。', 'Voice is off by default and stays off when Folio starts or a paper is reopened. Voice opens the options; only Start listening activates the microphone.')}</p>
       <p>{t('先填写自己的 AI API Key。说话停顿后自动发送，转写和回答保存在当前聊天。朗读时暂停收音；可打断、暂停或结束。收起 AI 面板不会结束已经开启的语音对话。', 'Add your own AI API key first. A pause sends your question; transcripts and answers stay in this chat. The microphone pauses during playback. You can interrupt, pause, or end the session. Hiding the AI panel does not end an active voice conversation.')}</p>
+      <p>{t('遇到误录内容，可在提问或回答下点击「删除」，确认后移除本轮问答及关联的自动记忆。删除时会结束正在进行的语音；旧版记忆如有残留，可在「记忆」中单独删除。', 'For unwanted transcripts, select Delete below the question or answer and confirm to remove that exchange and its linked automatic memories. Deleting ends active voice. Any older memory without a source link can be removed in Memory.')}</p>
       <h4>{t('下载音色与更改系统默认声音', 'Download voices and change the system default')}</h4>
       <ol>
         <li>{t('打开 macOS「系统设置 → 辅助功能 → 阅读与朗读」（较旧系统称「朗读内容」）。', 'Open macOS System Settings → Accessibility → Read & Speak (Spoken Content on older systems).')}</li>

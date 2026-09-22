@@ -34,7 +34,7 @@ Mac 打开 DMG 后，将 Folio 拖入「应用程序」；更新时退出旧版�
 
 | 版本 | 主要变化 |
 | --- | --- |
-| [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | 改进中英混读、实验术语读法及引用朗读；增加中英文独立音色与试听。语音默认关闭，附音色设置与使用教程。 |
+| [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | 改进中英混读、实验术语读法及引用朗读；增加中英文独立音色与试听。语音默认关闭，附音色设置与使用教程；可删除单轮问答及关联自动记忆。 |
 | [0.4.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.0) | Mac 接入 Apple 语音识别和系统朗读；语音与文字共用聊天记录，收起 AI 面板后仍可使用语音控制条。 |
 | [0.3.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.3.0) | 界面、菜单和笔记导出支持中英文；增加 GitHub 新版检测和安装包下载校验。 |
 | [0.2.2](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.2.2) | 选文右键添加批注，已有批注可编辑、删除和撤销；首次发布到 GitHub。 |
@@ -56,6 +56,7 @@ npm run build       # 生产构建
 npm test            # 单元测试
 npm run test:locale # 双语与更新界面检查
 npm run test:voice  # 语音界面检查，模拟收音与 AI
+npm run test:chat-deletion # 问答删除界面与持久保存检查
 npm run dist:dmg    # Mac 通用安装包，需在 Mac 上构建
 npm run dist:win    # Windows x64 安装版与免安装版
 ```

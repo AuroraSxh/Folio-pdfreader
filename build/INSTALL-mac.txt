@@ -69,3 +69,6 @@ Mac 语音对话
 新声音可能稍后才进入列表，等下载完成后再刷新或重开语音选项。
 软件内「阅读小贴士」和「语音选项」都有离线教程。在线中英文教程：
 https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/apple-voice.md
+
+误录内容：在提问或回答下点击「删除」，确认后移除本轮问答及关联的自动记忆；旧版记忆如有残留，可在「记忆」中另行删除。删除会结束正在进行的语音。
+Unwanted transcript: select Delete under a question or answer to remove that exchange and linked automatic memories. Remove any older unlinked memory in Memory separately. Deleting ends active voice.

@@ -5,6 +5,7 @@ import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCh
 import type { ChatRequest, Settings, TextSelection, Workspace } from '../../shared/types';
 import { useI18n } from '../i18n';
 import { getSummaryPrompt } from '../../shared/prompts';
+import { findChatTurn } from '../../shared/chat-turns';
 import { PLATFORM } from '../platform';
 import { useVoiceConversation } from '../hooks/useVoiceConversation';
 import VoiceControls from './VoiceControls';
@@ -104,6 +105,9 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const [notesPreview, setNotesPreview] = useState(false);
   const [clipboardSelection, setClipboardSelection] = useState<TextSelection | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const actionBusyRef = useRef(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ conversationId: string; messageId: string; prompt: string } | null>(null);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const [memoryType, setMemoryType] = useState('all');
   const currentRef = useRef({ workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, onSettings, t });
   currentRef.current = { workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, onSettings, t };
@@ -135,7 +139,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     ready: () => {
       const current = currentRef.current, config = current.settings.providers[current.settings.activeProvider];
       if (!config.hasKey && !config.apiKey) { current.onSettings(); return 'missing-key'; }
-      if (requestRef.current) return 'busy';
+      if (requestRef.current || actionBusyRef.current) return 'busy';
       if (!current.workspace.documents.length) return 'no-document';
     },
     submit: (text, voiceLocale, answer) => {
@@ -162,6 +166,8 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     },
   });
   const observedConversation = useRef(workspace.activeConversationId);
+  useEffect(() => { setDeleteTarget(null); }, [workspace.activeConversationId]);
+  useEffect(() => { if (deleteTarget) cancelDeleteRef.current?.focus({ preventScroll: true }); }, [deleteTarget]);
   useEffect(() => {
     if (observedConversation.current === workspace.activeConversationId) return;
     observedConversation.current = workspace.activeConversationId;
@@ -261,8 +267,9 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   }), [mergeSnapshot, streamAccumulator]);
 
   const send: Send = useCallback(async (promptText: string, kind: ChatRequest['kind'] = 'chat', selectionOverride?: TextSelection | null, sourceOverride?: string[], voiceSubmission?: VoiceSubmission) => {
+    if (actionBusyRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
     if (!voiceSubmission && voice.controller.getState().active) await voice.controller.pause();
-    if (!promptText.trim() || requestRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
+    if (!promptText.trim() || requestRef.current || actionBusyRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
     const current = currentRef.current;
     const active = current.settings.providers[current.settings.activeProvider];
     if (!active.hasKey && !active.apiKey) { setError(current.t("请先在设置中填写 API Key。", "Add your API key in Settings first.")); voiceSubmission?.reject(new Error('[missing-key]')); return; }
@@ -297,9 +304,41 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   }, [settings.autoSummary, hasKey, workspace.summary, workspace.documents, messages.length, send, language]);
 
   const runAction = async (action: () => Promise<void>) => {
+    if (actionBusyRef.current) return;
+    actionBusyRef.current = true;
     setActionBusy(true); setError(''); setNotice(null);
-    try { await action(); } catch (cause) { setError(errorText(cause)); } finally { if (mounted.current) setActionBusy(false); }
+    try { await action(); } catch (cause) { if (mounted.current) setError(errorText(cause)); } finally { actionBusyRef.current = false; if (mounted.current) setActionBusy(false); }
   };
+  const askDelete = (messageId: string) => {
+    if (!conversation || actionBusyRef.current) return;
+    const turn = findChatTurn(messages, messageId);
+    if (turn) setDeleteTarget({ conversationId: conversation.id, messageId, prompt: turn.messages[0].content });
+  };
+  const deleteExchange = () => runAction(async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    autoStarted.current = true;
+    // Invalidate a typed send before yielding: it may still be awaiting notes
+    // persistence and must not start an AI request while deletion is pending.
+    const typedRequest = requestRef.current?.source !== 'voice' ? requestRef.current : null;
+    if (typedRequest) {
+      requestRef.current = null;
+      setRequestId(null); setPendingPrompt(''); setStatus(''); streamAccumulator.clear();
+      await window.folio.abortChat(typedRequest.requestId);
+    }
+    // Ending voice releases audio and drains its pending request. The main
+    // process also cancels/drains typed requests before the atomic deletion.
+    await voice.controller.end();
+    await flushNotes();
+    requestRef.current = null;
+    lastRequest.current = null;
+    setRequestId(null); setPendingPrompt(''); setStatus(''); streamAccumulator.clear();
+    const next = await window.folio.deleteChatTurn(workspace.id, target.conversationId, target.messageId);
+    if (!mounted.current) return;
+    setError(''); mergeSnapshot(next); setDeleteTarget(null);
+    setNotice({ zh: '本轮问答已删除', en: 'Exchange deleted' });
+    inputRef.current?.focus({ preventScroll: true });
+  });
   const exportNotes = (target: 'file' | 'obsidian') => runAction(async () => {
     await flushNotes();
     if (target === 'obsidian' && !settings.vaultPath) { onSettings(); return; }
@@ -323,9 +362,24 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
 
     {tab === 'chat' && <>
       <div className="fl-conversation-bar"><History size={13} /><select aria-label={t("历史对话", "Conversation history")} value={conversation?.id ?? ''} disabled={(!!requestId && requestRef.current?.source !== 'voice') || actionBusy} onChange={event => { const conversationId = event.target.value; void runAction(async () => { await voice.controller.end(); const next = await window.folio.updateWorkspace(workspace.id, { activeConversationId: conversationId }); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); }); }}>{!conversation && <option value="">{t("新的阅读对话", "New reading conversation")}</option>}{workspace.conversations.map(item => <option key={item.id} value={item.id}>{item.title || t("新的阅读对话", "New reading conversation")}</option>)}</select><button className="fl-icon-button" title={t("新建对话", "New conversation")} aria-label={t("新建对话", "New conversation")} disabled={(!!requestId && requestRef.current?.source !== 'voice') || actionBusy} onClick={() => void runAction(async () => { await voice.controller.end(); const next = await window.folio.newConversation(workspace.id); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); })}><Plus size={15} /></button></div>
+      {deleteTarget && <div className="fl-delete-exchange" role="alertdialog" aria-label={t('删除本轮问答？', 'Delete this exchange?')} aria-describedby="delete-exchange-description" onKeyDown={event => { if (event.key === 'Escape' && !actionBusy) { event.stopPropagation(); setDeleteTarget(null); inputRef.current?.focus(); } }}>
+        <strong>{t('删除本轮问答？', 'Delete this exchange?')}</strong>
+        <blockquote>{deleteTarget.prompt}</blockquote>
+        <p id="delete-exchange-description">{t('提问、对应回答及关联的自动记忆将永久删除。已保存的个人笔记会保留。', 'The question, its answer, and linked automatic memories will be permanently deleted. Saved personal notes are kept.')}</p>
+        {workspace.memories.some(memory => memory.source === 'ai' && !memory.sourceTurnIds?.length) && <p>{t('旧版记忆无法追溯来源，如有误录内容，请在「记忆」中另行删除。', 'Older memories have no source links. If they contain unwanted content, remove them in Memory.')}</p>}
+        <div><button ref={cancelDeleteRef} className="fl-button fl-secondary" disabled={actionBusy} onClick={() => { setDeleteTarget(null); inputRef.current?.focus(); }}>{t('取消', 'Cancel')}</button><button className="fl-button fl-delete-confirm" disabled={actionBusy} onClick={() => void deleteExchange()}>{actionBusy ? <LoaderCircle size={12} className="fl-spinning" /> : <Trash2 size={12} />}{t('删除问答', 'Delete exchange')}</button></div>
+      </div>}
       <div className="fl-chat-scroll" ref={scrollRef} onScroll={event => { const element = event.currentTarget; followStream.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }}>
-        {!messages.length && !pendingPrompt && <div className="fl-chat-welcome"><div className="fl-ai-orb"><Sparkles size={24} strokeWidth={1.3} /></div><h3>{t("一起，读懂这篇论文。", "Read this paper together.")}</h3><p>{t("从一个问题开始。也可以在 PDF 中选中一段，让我们从那里深入。", "Start with a question, or select a passage in the PDF to explore it together.")}</p>{!hasKey && <button className="fl-key-cta" onClick={onSettings}><span><Settings2 size={15} /><strong>{t("连接你的 AI 服务", "Connect your AI service")}</strong><small>{t("填写 API Key 后开始对话", "Add your API key to start chatting")}</small></span><ArrowUpRight size={17} /></button>}<div className="fl-starters">{STARTERS.map(item => <button key={item.title} disabled={!!requestId} onClick={() => hasKey ? void send(item.prompt, item.kind) : onSettings()}><item.icon size={16} /><span><strong>{item.title}</strong><small>{item.detail}</small></span><ArrowUpRight size={13} /></button>)}</div><div className="fl-context-note"><FileText size={12} /> {t("结合本文与补充材料，回答附带页码。", "Answers draw on the paper and supplements, with page citations.")}</div></div>}
-        {messages.map(message => <article className={`fl-message ${message.role}`} key={message.id}>{message.role === 'assistant' && <div className="fl-message-author"><span><Sparkles size={12} /></span>Folio <small>{message.model}</small></div>}<div className={message.role === 'assistant' ? 'fl-markdown' : 'fl-user-message'}>{message.source === 'voice' && <span className="fl-message-voice"><Mic size={10} />{t("语音", "Voice")}</span>}{message.role === 'assistant' ? md(message.content) : message.content}</div>{message.interrupted && <span className="fl-interrupted">{t("已停止生成", "Generation stopped")}</span>}{message.role === 'assistant' && message.content && <div className="fl-message-actions"><button title={t("复制回复", "Copy response")} onClick={() => void copyText(message.content)}><Copy size={12} /> {t("复制", "Copy")}</button><button title={t("添加到个人笔记", "Add to personal notes")} onClick={() => addToNotes(message.content)}><NotebookPen size={12} /> {t("存为笔记", "Save to notes")}</button></div>}</article>)}
+        {!messages.length && !pendingPrompt && <div className="fl-chat-welcome"><div className="fl-ai-orb"><Sparkles size={24} strokeWidth={1.3} /></div><h3>{t("一起，读懂这篇论文。", "Read this paper together.")}</h3><p>{t("从一个问题开始。也可以在 PDF 中选中一段，让我们从那里深入。", "Start with a question, or select a passage in the PDF to explore it together.")}</p>{!hasKey && <button className="fl-key-cta" onClick={onSettings}><span><Settings2 size={15} /><strong>{t("连接你的 AI 服务", "Connect your AI service")}</strong><small>{t("填写 API Key 后开始对话", "Add your API key to start chatting")}</small></span><ArrowUpRight size={17} /></button>}<div className="fl-starters">{STARTERS.map(item => <button key={item.title} disabled={!!requestId || actionBusy} onClick={() => hasKey ? void send(item.prompt, item.kind) : onSettings()}><item.icon size={16} /><span><strong>{item.title}</strong><small>{item.detail}</small></span><ArrowUpRight size={13} /></button>)}</div><div className="fl-context-note"><FileText size={12} /> {t("结合本文与补充材料，回答附带页码。", "Answers draw on the paper and supplements, with page citations.")}</div></div>}
+        {messages.map(message => <article className={`fl-message ${message.role}`} key={message.id} data-message-id={message.id}>
+          {message.role === 'assistant' && <div className="fl-message-author"><span><Sparkles size={12} /></span>Folio <small>{message.model}</small></div>}
+          <div className={message.role === 'assistant' ? 'fl-markdown' : 'fl-user-message'}>{message.source === 'voice' && <span className="fl-message-voice"><Mic size={10} />{t("语音", "Voice")}</span>}{message.role === 'assistant' ? md(message.content) : message.content}</div>
+          {message.interrupted && <span className="fl-interrupted">{t("已停止生成", "Generation stopped")}</span>}
+          <div className="fl-message-actions">
+            {message.role === 'assistant' && message.content && <><button title={t("复制回复", "Copy response")} onClick={() => void copyText(message.content)}><Copy size={12} /> {t("复制", "Copy")}</button><button title={t("添加到个人笔记", "Add to personal notes")} onClick={() => addToNotes(message.content)}><NotebookPen size={12} /> {t("存为笔记", "Save to notes")}</button></>}
+            <button className="fl-delete-exchange-button" aria-label={t('删除本轮问答', 'Delete this exchange')} title={t('删除本轮问答', 'Delete this exchange')} disabled={actionBusy} onClick={() => askDelete(message.id)}><Trash2 size={12} />{t('删除', 'Delete')}</button>
+          </div>
+        </article>)}
         {pendingPrompt && <article className="fl-message user"><div className="fl-user-message">{pendingPrompt}</div></article>}
         {(requestId || stream) && <article className="fl-message assistant"><div className="fl-message-author"><span><Sparkles size={12} /></span>Folio <small>{provider.model}</small></div>{stream ? <div className="fl-markdown fl-streaming">{md(stream)}</div> : <div className="fl-thinking"><span /><span /><span /><small>{(status ? typeof status === "string" ? status : t(status.zh, status.en, status.values) : t("正在思考…", "Thinking…"))}</small></div>}</article>}
         {error && <div className="fl-inline-error" role="alert"><span>{error}</span>{!requestId && lastRequest.current && <button onClick={() => { const previous = lastRequest.current; if (previous) void send(previous.prompt, previous.kind, previous.selection, previous.documentIds); }}><RefreshCw size={12} /> {t("重试", "Retry")}</button>}</div>}

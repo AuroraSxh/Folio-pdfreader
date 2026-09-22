@@ -24,10 +24,10 @@ export interface PaperDocument {
   annotations: Annotation[]; view: ViewState; textStatus?: 'ready' | 'empty';
 }
 export type MemoryType = 'finding' | 'interpretation' | 'question' | 'user-note' | 'cross-ref';
-export interface Memory { id: string; type: MemoryType; title: string; body: string; tags: string[]; createdAt: number; source: 'ai' | 'user' }
-export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice' }
+export interface Memory { id: string; type: MemoryType; title: string; body: string; tags: string[]; createdAt: number; source: 'ai' | 'user'; sourceTurnIds?: string[] }
+export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice'; turnId?: string }
 export interface Conversation { id: string; title: string; createdAt: number; messages: ChatMessage[] }
-export interface Summary { content: string; provider: string; model: string; createdAt: number }
+export interface Summary { content: string; provider: string; model: string; createdAt: number; sourceTurnId?: string }
 export interface Workspace {
   version: 1; id: string; title: string; authors: string; journal: string; doi: string; tags: string[];
   favorite: boolean; createdAt: number; updatedAt: number; lastReadAt: number;
@@ -76,6 +76,7 @@ export interface FolioAPI {
   pickFolder(kind: 'vault'): Promise<string | null>;
   startChat(request: ChatRequest): Promise<void>;
   abortChat(requestId: string): Promise<void>;
+  deleteChatTurn(workspaceId: string, conversationId: string, messageId: string): Promise<Workspace>;
   voiceCapabilities(locale?: string): Promise<import('./voice').VoiceCapabilities>;
   voiceListen(options: import('./voice').VoiceListenOptions): Promise<void>;
   voiceStopListening(sessionId: string): Promise<{ text: string }>;

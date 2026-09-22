@@ -6,6 +6,7 @@ import test from 'node:test';
 import JSZip from 'jszip';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { LibraryStore, newWorkspace } from '../electron/store';
+import { findChatTurn } from '../shared/chat-turns';
 
 async function environment(t:{after(fn:()=>Promise<void>):void}) {
   const directory=await mkdtemp(path.join(os.tmpdir(),'folio-store-'));t.after(()=>rm(directory,{recursive:true,force:true}));
@@ -16,6 +17,68 @@ async function pdf(filename:string,text='Main paper') {
   const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica);pdf.addPage([300,400]).drawText(text,{font,x:30,y:330,size:14});
   const bytes=await pdf.save();await writeFile(filename,bytes);return bytes;
 }
+
+test('deleting a chat turn removes its derived AI memory and summary but keeps other turns, legacy memory and notes across reload',async t=>{
+  const {root,store}=await environment(t),ws=newWorkspace('Voice paper'),conversation=ws.conversations[0];
+  ws.notes='Manually saved notes';conversation.title='Accidental question';
+  conversation.messages=[
+    {id:'u1',role:'user',content:'Accidental question',createdAt:1,turnId:'turn-1',source:'voice'},
+    {id:'a1',role:'assistant',content:'Accidental answer',createdAt:2,turnId:'turn-1',source:'voice'},
+    {id:'u2',role:'user',content:'Keep this question',createdAt:3,turnId:'turn-2'},
+    {id:'a2',role:'assistant',content:'Keep this answer',createdAt:4,turnId:'turn-2'},
+  ];
+  const base={type:'finding' as const,body:'Evidence',tags:['paper'],createdAt:1};
+  ws.memories=[
+    {...base,id:'related',title:'Bad round memory',source:'ai',sourceTurnIds:['turn-1']},
+    {...base,id:'merged',title:'Merged dependent memory',source:'ai',sourceTurnIds:['old-turn','turn-1']},
+    {...base,id:'other',title:'Other round memory',source:'ai',sourceTurnIds:['turn-2']},
+    {...base,id:'legacy',title:'Legacy untraceable memory',source:'ai'},
+    {...base,id:'manual',title:'User memory',source:'user',sourceTurnIds:['turn-1']},
+  ];
+  ws.memoryIndex='Compressed accidental question';ws.summary={content:'Accidental answer',provider:'deepseek',model:'test',createdAt:2,sourceTurnId:'turn-1'};
+  await store.insert(ws);
+  const removed=await store.deleteChatTurn(ws.id,conversation.id,'a1');
+  assert.deepEqual(removed.conversations[0].messages.map(m=>m.id),['u2','a2']);
+  assert.equal(removed.conversations[0].title,'Keep this question');assert.equal(removed.activeConversationId,conversation.id);
+  assert.deepEqual(removed.memories.map(m=>m.id),['other','legacy','manual']);assert.equal(removed.summary,undefined);
+  assert.equal(removed.memoryIndex,'- [finding] Other round memory\n- [finding] Legacy untraceable memory\n- [finding] User memory');
+  assert.equal(removed.notes,'Manually saved notes');assert.ok(removed.updatedAt>ws.updatedAt);
+  const reloaded=new LibraryStore(root);await reloaded.init();assert.deepEqual(reloaded.get(ws.id),removed);
+  await store.deleteChatTurn(ws.id,conversation.id,'u2','Reading conversation');
+  assert.equal(store.get(ws.id).conversations[0].title,'Reading conversation');assert.equal(store.get(ws.id).conversations[0].messages.length,0);
+});
+
+test('legacy turn deletion handles orphan replies and unanswered questions without deleting the following question or custom title',async t=>{
+  const {store}=await environment(t),ws=newWorkspace(),conversation=ws.conversations[0];conversation.title='Custom imported title';
+  conversation.messages=[
+    {id:'orphan1',role:'assistant',content:'Old orphan',createdAt:1},
+    {id:'orphan2',role:'assistant',content:'Another orphan',createdAt:2},
+    {id:'unanswered',role:'user',content:'Unanswered question',createdAt:3},
+    {id:'question',role:'user',content:'Later question',createdAt:4},
+    {id:'partial',role:'assistant',content:'Partial reply',createdAt:5,interrupted:true},
+  ];
+  ws.summary={content:'Untraceable old summary',provider:'deepseek',model:'old',createdAt:1};
+  await store.insert(ws);
+  assert.deepEqual(findChatTurn(conversation.messages,'orphan2')?.messages.map(m=>m.id),['orphan2']);
+  assert.deepEqual(findChatTurn(conversation.messages,'partial')?.messages.map(m=>m.id),['question','partial']);
+  assert.equal(findChatTurn(conversation.messages,'missing'),undefined);
+  let updated=await store.deleteChatTurn(ws.id,conversation.id,'orphan2');assert.deepEqual(updated.conversations[0].messages.map(m=>m.id),['orphan1','unanswered','question','partial']);
+  updated=await store.deleteChatTurn(ws.id,conversation.id,'unanswered');assert.deepEqual(updated.conversations[0].messages.map(m=>m.id),['orphan1','question','partial']);
+  assert.equal(updated.conversations[0].title,'Custom imported title');assert.equal(updated.summary?.content,'Untraceable old summary');
+  for(const args of [[ws.id,'missing','question'],[ws.id,conversation.id,'missing'],[ws.id,conversation.id,'\0'],['../escape',conversation.id,'question']])await assert.rejects(()=>store.deleteChatTurn(args[0],args[1],args[2]));
+  assert.deepEqual(store.get(ws.id),updated);
+});
+
+test('deleting a legacy summary removes only an exact matching assistant answer, and failed writes leave the turn intact',async t=>{
+  const {store,root}=await environment(t),ws=newWorkspace(),conversation=ws.conversations[0];
+  conversation.messages=[{id:'question',role:'user',content:'Summarize',createdAt:1},{id:'answer',role:'assistant',content:'Exact old summary',createdAt:2}];
+  ws.summary={content:'Exact old summary',provider:'deepseek',model:'old',createdAt:2};await store.insert(ws);
+  const file=path.join(root,ws.id,'workspace.json'),saved=path.join(root,ws.id,'workspace.saved.json');await rename(file,saved);await mkdir(file);
+  await assert.rejects(()=>store.deleteChatTurn(ws.id,conversation.id,'answer'));
+  assert.deepEqual(store.get(ws.id),ws,'Failed atomic persistence must not alter messages, summary or memory in RAM');
+  await rm(file,{recursive:true});await rename(saved,file);
+  const deleted=await store.deleteChatTurn(ws.id,conversation.id,'answer');assert.equal(deleted.summary,undefined);assert.equal(deleted.conversations[0].messages.length,0);
+});
 
 test('folder import groups main and supplement, deduplicates bytes and persists snapshots across reload',async t=>{
   const {root,sources,store}=await environment(t);

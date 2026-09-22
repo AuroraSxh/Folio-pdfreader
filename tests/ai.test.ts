@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { once } from 'node:events';
 import test from 'node:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { LibraryStore } from '../electron/store';
 import { createAIService, parseMemories, readSSE, streamCompletion, type AIHost } from '../electron/ai';
 import { buildMemoryContext, buildReadingContext, CHAT_SYSTEM, MEMORY_SYSTEM, getSummaryPrompt, getSystemPrompt, isDuplicateTitle, sanitizeData } from '../shared/prompts';
 import type { ChatEvent, ChatRequest, ProviderConfig, Settings, Workspace } from '../shared/types';
@@ -60,7 +64,98 @@ test('voice questions and answers share the existing conversation, paper context
   assert.equal(messages[0].content, '请解释补充图二。');
   assert.match(messages[1].content, /补充图二支持正文结论/);
   assert.equal(h.state().conversations.length, 1);
+  assert.ok(messages[0].turnId);assert.equal(messages[0].turnId,messages[1].turnId);
   assert.equal(h.events.filter(event => event.type === 'delta').map(event => event.text).join(''), '补充图二支持正文结论。[Supplement.pdf p.1]');
+});
+
+test('new memory and summary provenance follows completed turns, including duplicate AI memory updates but never user memory',async t=>{
+  let calls=0;
+  const server=await mock((_body,response)=>{
+    if(++calls%2===1)answer(response,'Answer with traceable origin');
+    else answer(response,JSON.stringify([
+      {type:'finding',title:'Existing AI finding',body:`Updated at ${calls}`,tags:['new']},
+      {type:'finding',title:'User owned finding',body:'Must not replace',tags:['ai']},
+      {type:'question',title:'New traceable question',body:'Follow-up',tags:[]},
+    ]));
+  });t.after(server.close);
+  const initial=workspace();initial.memoryIndex='Existing valid index';
+  initial.memories=[
+    {id:'known',type:'finding',title:'Existing AI finding',body:'Before',tags:['old'],createdAt:1,source:'ai',sourceTurnIds:['older-turn']},
+    {id:'user',type:'finding',title:'User owned finding',body:'Keep manual evidence',tags:[],createdAt:1,source:'user'},
+  ];
+  const config=settings(server.url);config.autoMemory=true;const h=harness(config,initial);t.after(()=>h.service.dispose());
+  await h.service.start({...request('first'),kind:'summary'});await h.terminal();
+  const first=h.state().conversations[0].messages[0].turnId!;
+  assert.equal(h.state().summary?.sourceTurnId,first);assert.deepEqual(h.state().memories[0].sourceTurnIds,['older-turn',first]);
+  assert.deepEqual(h.state().memories.find(m=>m.id==='user'),initial.memories[1]);
+  assert.deepEqual(h.state().memories.find(m=>m.type==='question')?.sourceTurnIds,[first]);
+  h.next();await h.service.start(request('second'));await h.terminal();
+  const second=h.state().conversations[0].messages[2].turnId!;
+  assert.notEqual(first,second);assert.deepEqual(h.state().memories[0].sourceTurnIds,['older-turn',first,second]);
+  assert.deepEqual(h.state().memories.find(m=>m.type==='question')?.sourceTurnIds,[first,second]);assert.equal(calls,4);
+});
+
+test('exclusive conversation deletion waits for interrupted persistence and blocks new requests until the mutation completes',async t=>{
+  let deltaSeen!:()=>void;const delta=new Promise<void>(resolve=>{deltaSeen=resolve;});
+  const server=await mock((_body,response)=>{response.writeHead(200,{'Content-Type':'text/event-stream'});response.write(frame({choices:[{delta:{content:'Late partial reply'}}]}));});t.after(server.close);
+  const h=harness(settings(server.url));t.after(()=>h.service.dispose());
+  const emit=h.host.emit;h.host.emit=event=>{emit(event);if(event.type==='delta')deltaSeen();};
+  await h.service.start(request());await delta;
+  let entered!:()=>void,release!:()=>void;const mutationEntered=new Promise<void>(resolve=>{entered=resolve;}),gate=new Promise<void>(resolve=>{release=resolve;});
+  const deletion=h.service.withWorkspaceMutation('paper-1',async()=>{
+    assert.equal(h.state().conversations[0].messages[1].interrupted,true,'Cancellation has completed its late partial save');
+    assert.equal(h.state().conversations[0].messages[0].turnId,h.state().conversations[0].messages[1].turnId);
+    assert.ok(h.events.some(event=>event.type==='done'));entered();await gate;
+    return h.host.mutateWorkspace('paper-1',ws=>{ws.conversations[0].messages=[];});
+  });
+  await assert.rejects(()=>h.service.start(request('during-cancel')),/正在更新/);
+  await mutationEntered;await assert.rejects(()=>h.service.start(request('during-write')),/正在更新/);
+  await assert.rejects(()=>h.service.withWorkspaceMutation('paper-1',async()=>{}),/正在更新/);
+  release();await deletion;await h.service.drain();assert.equal(h.state().conversations[0].messages.length,0);
+  await assert.rejects(()=>h.service.withWorkspaceMutation('paper-1',async()=>{throw new Error('disk failure');}),/disk failure/);
+  assert.equal(await h.service.withWorkspaceMutation('paper-1',async()=>42),42,'Failed mutations release admission lock');
+});
+
+test('deleting during memory-index generation drains the task and atomically removes the turn and its already-saved memories',async t=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'folio-ai-delete-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+  const store=new LibraryStore(directory);await store.init();const initial=workspace();initial.notes='Keep manual notes';await store.insert(initial);
+  let calls=0,indexStarted!:()=>void;const started=new Promise<void>(resolve=>{indexStarted=resolve;});
+  const server=await mock((_body,response)=>{
+    if(++calls===1)answer(response,'Misheard answer');
+    else if(calls===2)answer(response,JSON.stringify([{type:'finding',title:'Misheard memory',body:'Should be removed',tags:[]}]));
+    else {response.writeHead(200,{'Content-Type':'text/event-stream'});response.flushHeaders();indexStarted();}
+  });t.after(server.close);
+  const config=settings(server.url);config.autoMemory=true;
+  const service=createAIService({getWorkspace:id=>store.get(id),listWorkspaces:()=>store.list(),getSettings:()=>config,getDocumentPages:async()=>['Readable paper'],mutateWorkspace:(id,fn)=>store.mutate(id,fn),emit:()=>{}});t.after(()=>service.dispose());
+  await service.start({...request(),source:'voice'});await started;
+  const before=store.get(initial.id);assert.equal(before.memories.length,1);assert.equal(before.conversations[0].messages.length,2);
+  const question=before.conversations[0].messages[0];assert.deepEqual(before.memories[0].sourceTurnIds,[question.turnId]);
+  const removed=await service.withWorkspaceMutation(initial.id,()=>store.deleteChatTurn(initial.id,'conv',question.id));
+  assert.equal(removed.conversations[0].messages.length,0);assert.equal(removed.memories.length,0);assert.equal(removed.memoryIndex,'');assert.equal(removed.notes,'Keep manual notes');
+  await service.drain();assert.equal(calls,3);
+  const reloaded=new LibraryStore(directory);await reloaded.init();assert.deepEqual(reloaded.get(initial.id),removed);
+});
+
+test('deleting during memory extraction removes the saved summary and ignores the late extraction response',async t=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),'folio-ai-memory-delete-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+  const store=new LibraryStore(directory);await store.init();const initial=workspace();await store.insert(initial);
+  let memoryStarted!:()=>void,releaseLate!:()=>void,lateFinished!:()=>void;
+  const started=new Promise<void>(resolve=>{memoryStarted=resolve;}),lateGate=new Promise<void>(resolve=>{releaseLate=resolve;}),lateDone=new Promise<void>(resolve=>{lateFinished=resolve;});
+  let calls=0;
+  const server=await mock(async(_body,response)=>{
+    if(++calls===1){answer(response,'Summary to delete');return;}
+    response.writeHead(200,{'Content-Type':'text/event-stream'});response.flushHeaders();memoryStarted();await lateGate;
+    response.end(frame({choices:[{delta:{content:JSON.stringify([{type:'finding',title:'Late deleted memory',body:'Must never return',tags:[]}])},finish_reason:'stop'}]})+'data: [DONE]\n\n');lateFinished();
+  });t.after(()=>{releaseLate();server.close();});
+  const config=settings(server.url);config.autoMemory=true;
+  const service=createAIService({getWorkspace:id=>store.get(id),listWorkspaces:()=>store.list(),getSettings:()=>config,getDocumentPages:async()=>['Readable paper'],mutateWorkspace:(id,fn)=>store.mutate(id,fn),emit:()=>{}});t.after(()=>service.dispose());
+  await service.start({...request(),kind:'summary'});await started;
+  const saved=store.get(initial.id),question=saved.conversations[0].messages[0];assert.equal(saved.summary?.sourceTurnId,question.turnId);
+  const removed=await service.withWorkspaceMutation(initial.id,()=>store.deleteChatTurn(initial.id,'conv',question.id));
+  assert.equal(removed.summary,undefined);assert.equal(removed.conversations[0].messages.length,0);assert.equal(removed.memories.length,0);
+  releaseLate();await lateDone;await service.drain();await store.flush();
+  assert.deepEqual(store.get(initial.id),removed);assert.equal(calls,2,'Deleted extraction cannot launch an index request');
+  const reloaded=new LibraryStore(directory);await reloaded.init();assert.deepEqual(reloaded.get(initial.id),removed);
 });
 
 test('voice language controls the answer without modifying the transcript or interface language', async t => {

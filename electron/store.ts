@@ -4,6 +4,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import JSZip from 'jszip';
 import { DEFAULT_VIEW, type Workspace, type PaperDocument, type DocumentIndex, type OutlineItem, type RemovedWorkspace, type DocumentEditHistory } from '../shared/types';
+import { findChatTurn } from '../shared/chat-turns';
 
 export async function atomicWrite(file: string, data: string | Uint8Array) {
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -19,6 +20,7 @@ export function safeFilename(value:string) {
   return name||'untitled';
 }
 const validId = (id: unknown): id is string => typeof id === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(id);
+const validChatId = (id: unknown): id is string => typeof id === 'string' && id.length > 0 && id.length <= 256 && !/[\x00-\x1f\x7f]/.test(id);
 const clone = <T>(x: T): T => structuredClone(x);
 const portablePdfName=(name:string)=>name===path.basename(name)&&!/[/\\:*?"<>|\x00-\x1f]/.test(name)&&!reservedFilename.test(name)&&/\.pdf$/i.test(name);
 const removalFile = '.removal.json';
@@ -71,16 +73,16 @@ export function validateWorkspace(value: unknown): asserts value is Workspace {
     ids.add(doc.id.toLowerCase());filenames.add(doc.fileName.toLowerCase());
   }
   const conversationIds=new Set<string>();
-  for(const c of w.conversations){if(!c||typeof c.id!=='string'||!c.id||conversationIds.has(c.id)||typeof c.title!=='string'||!Number.isFinite(c.createdAt)||!Array.isArray(c.messages)||c.messages.some(m=>!m||typeof m.id!=='string'||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||!Number.isFinite(m.createdAt)))throw new Error('对话数据无效');conversationIds.add(c.id);}
+  for(const c of w.conversations){if(!c||typeof c.id!=='string'||!c.id||conversationIds.has(c.id)||typeof c.title!=='string'||!Number.isFinite(c.createdAt)||!Array.isArray(c.messages)||c.messages.some(m=>!m||typeof m.id!=='string'||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||!Number.isFinite(m.createdAt)||(m.turnId!==undefined&&!validChatId(m.turnId))))throw new Error('对话数据无效');conversationIds.add(c.id);}
   if(!conversationIds.has(w.activeConversationId))throw new Error('当前对话不存在');
-  for(const m of w.memories) if(!m||typeof m.id!=='string'||!m.id||!['finding','interpretation','question','user-note','cross-ref'].includes(m.type)||typeof m.title!=='string'||typeof m.body!=='string'||!Array.isArray(m.tags)||!m.tags.every(t=>typeof t==='string')||!['ai','user'].includes(m.source)||!Number.isFinite(m.createdAt))throw new Error('记忆数据无效');
+  for(const m of w.memories) if(!m||typeof m.id!=='string'||!m.id||!['finding','interpretation','question','user-note','cross-ref'].includes(m.type)||typeof m.title!=='string'||typeof m.body!=='string'||!Array.isArray(m.tags)||!m.tags.every(t=>typeof t==='string')||!['ai','user'].includes(m.source)||!Number.isFinite(m.createdAt)||(m.sourceTurnIds!==undefined&&(!Array.isArray(m.sourceTurnIds)||!m.sourceTurnIds.every(validChatId))))throw new Error('记忆数据无效');
   if(typeof w.layout.split!=='boolean'||typeof w.layout.leftId!=='string'||typeof w.layout.rightId!=='string'||!Number.isFinite(w.layout.ratio))throw new Error('阅读布局无效');
   if(w.layout.direction!==undefined&&!['vertical','horizontal'].includes(w.layout.direction))throw new Error('分割方向无效');
   if(w.layout.views)for(const [pane,value] of Object.entries(w.layout.views)){
     const v=value?.state;
     if(!['left','right'].includes(pane)||!value||!validId(value.documentId)||!v||!Number.isInteger(v.page)||v.page<1||typeof v.scale!=='string'||!Number.isFinite(v.rotation)||v.rotation%90!==0||![0,1,2,3].includes(v.scrollMode)||![0,1,2].includes(v.spreadMode))throw new Error('阅读区域状态无效');
   }
-  if(w.summary&&(![w.summary.content,w.summary.provider,w.summary.model].every(x=>typeof x==='string')||!Number.isFinite(w.summary.createdAt)))throw new Error('总结数据无效');
+  if(w.summary&&(![w.summary.content,w.summary.provider,w.summary.model].every(x=>typeof x==='string')||!Number.isFinite(w.summary.createdAt)||(w.summary.sourceTurnId!==undefined&&!validChatId(w.summary.sourceTurnId))))throw new Error('总结数据无效');
 }
 
 async function resolvePdfs(paths: string[], depth = 0): Promise<string[]> {
@@ -215,6 +217,31 @@ export class LibraryStore {
   async insert(ws: Workspace) { return this.queue(async()=>{ validateWorkspace(ws);if(this.hasStoredId(ws.id)||await this.storedOnDisk(ws.id))throw new Error('工作区已存在（可能位于已移除文章中）');const dir=path.join(this.root,ws.id);await fs.mkdir(dir);try{await this.persist(ws);return clone(ws);}catch(error){await fs.rm(dir,{recursive:true,force:true});throw error;} }); }
   async mutate(id: string, fn: (ws:Workspace)=>void):Promise<Workspace> {
     return this.queue(async()=>{ const ws=this.get(id),previous=ws.updatedAt;fn(ws);if(ws.id!==id)throw new Error('不能修改工作区 ID');ws.updatedAt=Math.max(Date.now(),previous+1);await this.persist(ws);return clone(ws); });
+  }
+  validateChatTurn(id: string, conversationId: string, messageId: string) {
+    if (!validId(id) || !validChatId(conversationId) || !validChatId(messageId)) throw new Error('对话编号无效');
+    const conversation = this.get(id).conversations.find(item => item.id === conversationId);
+    if (!conversation) throw new Error('找不到此会话');
+    if (conversation.messages.filter(message => message.id === messageId).length !== 1 || !findChatTurn(conversation.messages, messageId)) throw new Error('找不到这轮问答，请刷新后重试');
+  }
+  async deleteChatTurn(id: string, conversationId: string, messageId: string, emptyTitle = '阅读对话'): Promise<Workspace> {
+    this.validateChatTurn(id, conversationId, messageId);
+    return this.mutate(id, ws => {
+      const conversation = ws.conversations.find(item => item.id === conversationId);
+      const turn = conversation && findChatTurn(conversation.messages, messageId);
+      if (!conversation || !turn) throw new Error('找不到这轮问答，请刷新后重试');
+      const firstQuestion = conversation.messages.find(message => message.role === 'user');
+      const automaticTitle = firstQuestion && conversation.title === firstQuestion.content.slice(0, 40);
+      conversation.messages.splice(turn.start, turn.end - turn.start);
+      if (automaticTitle) conversation.title = conversation.messages.find(message => message.role === 'user')?.content.slice(0, 40) || emptyTitle;
+      const origins = new Set(turn.turnIds);
+      ws.memories = ws.memories.filter(memory => memory.source === 'user' || !memory.sourceTurnIds?.some(id => origins.has(id)));
+      // An index may quote removed memories or even the deleted prompt. Rebuild
+      // it locally from remaining records, including untraceable legacy memory.
+      ws.memoryIndex = ws.memories.slice(0, 12).map(memory => `- [${memory.type}] ${memory.title}`).join('\n');
+      if (ws.summary && (ws.summary.sourceTurnId ? origins.has(ws.summary.sourceTurnId)
+        : turn.messages.some(message => message.role === 'assistant' && !!message.content.trim() && message.content === ws.summary!.content))) delete ws.summary;
+    });
   }
   async patch(id: string, patch: Partial<Workspace>) {
     return this.mutate(id, ws=>{

@@ -172,16 +172,17 @@ export function parseMemories(raw: string): Omit<Memory, 'id' | 'source' | 'crea
 
 export function createAIService(host: AIHost) {
   const active = new Map<string, { workspaceId: string; controller: AbortController; task: Promise<void> }>();
+  const exclusiveWorkspaces = new Set<string>();
   let disposed = false;
   const emit = (event: ChatEvent) => { if (!disposed) host.emit(event); };
 
-  async function updateMemory(request: ChatRequest, config: ProviderConfig, signal: AbortSignal,language:Language) {
+  async function updateMemory(request: ChatRequest, config: ProviderConfig, signal: AbortSignal,language:Language,turnId:string) {
     const t=(zh:string,en:string,values?:Record<string,string|number>)=>translate(language,zh,en,values);
     signal.throwIfAborted();
     const workspace = host.getWorkspace(request.workspaceId);
     const conversation = workspace.conversations.find(c => c.id === request.conversationId)!;
     // Keep factual final answers only; reasoning deltas are discarded before this layer.
-    const data = { article: { title: workspace.title, doi: workspace.doi }, avoid_titles: workspace.memories.map(m => m.title), recent_conversation: conversation.messages.slice(-2).map(m => ({ role: m.role, content: m.content })) };
+    const data = { article: { title: workspace.title, doi: workspace.doi }, avoid_titles: workspace.memories.map(m => m.title), recent_conversation: conversation.messages.filter(m=>m.turnId===turnId).map(m => ({ role: m.role, content: m.content })) };
     const extracted = await streamCompletion(config, [{ role: 'system', content: getSystemPrompt('memory',language) }, { role: 'user', content: sanitizeData(JSON.stringify(data)) }], signal, () => {}, 60_000,language);
     signal.throwIfAborted();
     const candidates = parseMemories(extracted.text);
@@ -190,8 +191,8 @@ export function createAIService(host: AIHost) {
       for (const candidate of candidates) {
         const duplicate = ws.memories.find(m => m.type === candidate.type && isDuplicateTitle(m.title, candidate.title));
         if (duplicate) {
-          if (duplicate.source !== 'user') { duplicate.body = candidate.body; duplicate.tags = [...new Set([...duplicate.tags, ...candidate.tags])]; }
-        } else ws.memories.push({ ...candidate, id: randomUUID(), createdAt: Date.now(), source: 'ai' });
+          if (duplicate.source !== 'user') { duplicate.body = candidate.body; duplicate.tags = [...new Set([...duplicate.tags, ...candidate.tags])]; duplicate.sourceTurnIds = [...new Set([...(duplicate.sourceTurnIds??[]),turnId])]; }
+        } else ws.memories.push({ ...candidate, id: randomUUID(), createdAt: Date.now(), source: 'ai', sourceTurnIds:[turnId] });
       }
     });
     signal.throwIfAborted();
@@ -217,12 +218,13 @@ export function createAIService(host: AIHost) {
   async function run(request: ChatRequest, settings: Settings, config: ProviderConfig, signal: AbortSignal) {
     const language=request.source==='voice'&&request.voiceLocale ? (request.voiceLocale==='en-US'?'en':'zh-CN') : normalizeLanguage(settings.language),t=(zh:string,en:string,values?:Record<string,string|number>)=>translate(language,zh,en,values);
     const base = { requestId: request.requestId, workspaceId: request.workspaceId };
+    const turnId = randomUUID();
     let partial = '';
     let saved = false;
     let warnings: string[] = [];
     try {
       const origin = request.source === 'voice' ? { source: 'voice' as const } : {};
-      const user: ChatMessage = { id: randomUUID(), role: 'user', content: request.prompt || getSummaryPrompt(language), createdAt: Date.now(), ...origin };
+      const user: ChatMessage = { id: randomUUID(), role: 'user', content: request.prompt || getSummaryPrompt(language), createdAt: Date.now(), turnId, ...origin };
       let workspace = await host.mutateWorkspace(request.workspaceId, ws => {
         signal.throwIfAborted();
         const conversation = ws.conversations.find(c => c.id === request.conversationId)!;
@@ -275,13 +277,13 @@ export function createAIService(host: AIHost) {
       const content = result.text + (warnings.length ? `\n\n> ${t('上下文与输出说明：','Context and output notes: ')}${warnings.join(' ')}` : '');
       workspace = await host.mutateWorkspace(workspace.id, ws => {
         signal.throwIfAborted();
-        ws.conversations.find(c => c.id === request.conversationId)!.messages.push({ id: randomUUID(), role: 'assistant', content, createdAt: Date.now(), provider: config.id, model: config.model, ...origin });
-        if (request.kind === 'summary') ws.summary = { content, provider: config.id, model: config.model, createdAt: Date.now() };
+        ws.conversations.find(c => c.id === request.conversationId)!.messages.push({ id: randomUUID(), role: 'assistant', content, createdAt: Date.now(), provider: config.id, model: config.model, turnId, ...origin });
+        if (request.kind === 'summary') ws.summary = { content, provider: config.id, model: config.model, createdAt: Date.now(), sourceTurnId:turnId };
       });
       saved = true;
       if (settings.autoMemory) {
         emit({ ...base, type: 'status', text: t("回答已保存，正在提取长期记忆…","Answer saved. Extracting long-term memories…"), workspace });
-        try { await updateMemory(request, config, signal,language); }
+        try { await updateMemory(request, config, signal,language,turnId); }
         catch (error) {
           if (!signal.aborted) emit({ ...base, type: 'status', text: t('回答已保存；本次记忆提取失败：{error}','Answer saved; memory extraction failed: {error}',{error:safeError(error,config.apiKey)}) });
         }
@@ -292,7 +294,7 @@ export function createAIService(host: AIHost) {
       if (partial && !saved) {
         try {
           workspace = await host.mutateWorkspace(request.workspaceId, ws => {
-            ws.conversations.find(c => c.id === request.conversationId)?.messages.push({ id: randomUUID(), role: 'assistant', content: partial + t('\n\n> 回答已中断，以上为部分内容。','\n\n> The response was interrupted; the text above is incomplete.'), createdAt: Date.now(), provider: config.id, model: config.model, interrupted: true, ...(request.source === 'voice' ? {source:'voice' as const} : {}) });
+            ws.conversations.find(c => c.id === request.conversationId)?.messages.push({ id: randomUUID(), role: 'assistant', content: partial + t('\n\n> 回答已中断，以上为部分内容。','\n\n> The response was interrupted; the text above is incomplete.'), createdAt: Date.now(), provider: config.id, model: config.model, interrupted: true, turnId, ...(request.source === 'voice' ? {source:'voice' as const} : {}) });
           });
         } catch { /* A workspace may have been deleted during cancellation. */ }
       }
@@ -309,6 +311,7 @@ export function createAIService(host: AIHost) {
     async start(request: ChatRequest): Promise<void> {
       const settings = structuredClone(host.getSettings()),language=normalizeLanguage(settings.language),t=(zh:string,en:string,values?:Record<string,string|number>)=>translate(language,zh,en,values);
       if (disposed) throw new Error(t("AI 服务已关闭。","The AI service has shut down."));
+      if (exclusiveWorkspaces.has(request.workspaceId)) throw new Error(t("正在更新此论文的对话，请稍后重试。","This paper's conversation is being updated. Try again shortly."));
       if (!request.requestId || active.has(request.requestId)) throw new Error(t("请求编号无效或重复。","The request ID is invalid or duplicated."));
       const workspace = host.getWorkspace(request.workspaceId);
       if ([...active.values()].some(item => item.workspaceId === workspace.id)) throw new Error(t("此论文已有生成任务，请等待完成或先停止。","This paper already has a generation in progress. Wait for it to finish or stop it first."));
@@ -334,6 +337,22 @@ export function createAIService(host: AIHost) {
       job.task = run(structuredClone({ ...request, documentIds: [...new Set(request.documentIds)] }), settings, config, controller.signal);
     },
     abort(requestId: string) { active.get(requestId)?.controller.abort(); },
+    /** Block admission synchronously before waiting for cancellation. run() may
+     * still save an interrupted answer or finish an already-started disk write;
+     * the mutation must run after every such task has settled. */
+    async withWorkspaceMutation<T>(workspaceId:string, mutation:()=>Promise<T>):Promise<T> {
+      const language=normalizeLanguage(host.getSettings().language),t=(zh:string,en:string)=>translate(language,zh,en);
+      if(disposed)throw new Error(t('AI 服务已关闭。','The AI service has shut down.'));
+      if(exclusiveWorkspaces.has(workspaceId))throw new Error(t('正在更新此论文的对话，请稍后重试。',"This paper's conversation is being updated. Try again shortly."));
+      host.getWorkspace(workspaceId);
+      exclusiveWorkspaces.add(workspaceId);
+      try {
+        const jobs=[...active.values()].filter(item=>item.workspaceId===workspaceId);
+        for(const job of jobs)job.controller.abort();
+        await Promise.allSettled(jobs.map(job=>job.task));
+        return await mutation();
+      } finally { exclusiveWorkspaces.delete(workspaceId); }
+    },
     async cancelWorkspace(workspaceId: string) {
       const jobs = [...active.values()].filter(item => item.workspaceId === workspaceId);
       for (const job of jobs) job.controller.abort();

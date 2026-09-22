@@ -21,7 +21,8 @@
     "test:win-package": "node scripts/verify-windows.mjs",
     "test:reading": "node scripts/e2e-reading.mjs",
     "test:locale": "node scripts/e2e-locale.mjs",
-    "test:voice": "node scripts/e2e-voice.mjs"
+    "test:voice": "node scripts/e2e-voice.mjs",
+    "test:chat-deletion": "node scripts/e2e-chat-deletion.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.577.0",

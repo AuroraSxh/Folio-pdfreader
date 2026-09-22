@@ -58,6 +58,9 @@ const legacyErrors:Record<string,string>={
   '工作区文件格式无效':'Invalid workspace file format.',
   '工作区 PDF 记录无效':'Invalid workspace PDF record.',
   '对话数据无效':'Invalid conversation data.',
+  '对话编号无效':'Invalid conversation ID.',
+  '找不到此会话':'Conversation not found.',
+  '找不到这轮问答，请刷新后重试':'This question and answer could not be found. Refresh and try again.',
   '当前对话不存在':'The current conversation does not exist.',
   '记忆数据无效':'Invalid memory data.',
   '阅读布局无效':'Invalid reading layout.',
@@ -229,6 +232,10 @@ function registerIPC(){
   handle('pick-folder',async(kind:string)=>{if(kind!=='vault')throw new Error(t("无效目录类型","Invalid folder type."));const r=await dialog.showOpenDialog(window!,{title:t("选择 Obsidian 仓库目录","Choose an Obsidian vault folder"),properties:['openDirectory','createDirectory']});return r.canceled?null:r.filePaths[0];});
   handle('start-chat',(request:ChatRequest)=>ai.start(request));
   handle('abort-chat',(id:string)=>ai.abort(id));
+  handle('delete-chat-turn',(id:string,conversationId:string,messageId:string)=>{
+    library.validateChatTurn(id,conversationId,messageId);
+    return ai.withWorkspaceMutation(id,()=>library.deleteChatTurn(id,conversationId,messageId,t('阅读对话','Reading conversation')));
+  });
   handle('voice-capabilities',async(locale?:string)=>(await voiceService()).capabilities(locale));
   handle('voice-listen',async(options)=>(await voiceService()).listen(options));
   handle('voice-stop-listening',(sessionId:string)=>voice?voice.stopListening(sessionId):{text:''});

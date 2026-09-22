@@ -17,6 +17,7 @@ const api:FolioAPI={
   downloadUpdate:()=>invoke('download-update'),cancelUpdate:()=>invoke('cancel-update'),installUpdate:()=>invoke('install-update'),
   onUpdate:callback=>subscribe('update',callback),
   startChat:request=>invoke('start-chat',request),abortChat:id=>invoke('abort-chat',id),newConversation:id=>invoke('new-conversation',id),deleteMemory:(id,memory)=>invoke('delete-memory',id,memory),
+  deleteChatTurn:(id,conversation,message)=>invoke('delete-chat-turn',id,conversation,message),
   voiceCapabilities:locale=>invoke('voice-capabilities',locale),voiceListen:options=>invoke('voice-listen',options),voiceStopListening:sessionId=>invoke('voice-stop-listening',sessionId),
   voiceSpeak:options=>invoke('voice-speak',options),voiceStopSpeaking:()=>invoke('voice-stop-speaking'),onVoice:callback=>subscribe('voice',callback),
   exportMarkdown:(id,target)=>invoke('export-markdown',id,target),backup:()=>invoke('backup'),restore:()=>invoke('restore'),importLegacy:()=>invoke('import-legacy'),

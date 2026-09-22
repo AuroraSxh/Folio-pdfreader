@@ -54,6 +54,18 @@ try{
       const done=setTimeout(()=>{v.pending.delete(request.requestId);send('chat',{...base,type:'done',workspace:structuredClone(ws)});},300);
       v.pending.set(request.requestId,{timers:[first,saved,done],base,ws});
     });
+    replace('delete-chat-turn',(_event,workspaceId,conversationId,messageId)=>{
+      if(v.listening||v.speaking)throw Error('Voice must stop before deleting an exchange');
+      v.calls.push(['delete-chat-turn',messageId]);
+      const ws=structuredClone(v.workspaces.get(workspaceId));
+      const chat=ws.conversations.find(item=>item.id===conversationId);
+      let start=chat.messages.findIndex(item=>item.id===messageId);
+      if(start<0)throw Error('Missing exchange');
+      while(start>0&&chat.messages[start].role!=='user')start--;
+      let end=start+1;while(end<chat.messages.length&&chat.messages[end].role!=='user')end++;
+      chat.messages.splice(start,end-start);ws.updatedAt=Math.max(Date.now(),ws.updatedAt+1);
+      v.workspaces.set(ws.id,ws);return ws;
+    });
     replace('abort-chat',(_event,id)=>{const job=v.pending.get(id);if(job){job.timers.forEach(clearTimeout);v.pending.delete(id);send('chat',{...job.base,type:'done',interrupted:true,workspace:structuredClone(job.ws)});}});
   });
   assert.equal(await control().count(),0);
@@ -196,6 +208,32 @@ try{
   await page.screenshot({path:path.join(output,'voice-guide-en.png')});
   assert.equal((await mockState()).listening,null);
   pass('The offline voice tutorial follows the English interface language');
+  await englishHelp.getByRole('button',{name:'Close',exact:true}).click();
+  await page.getByRole('button',{name:'Open A workspace for a closer reading',exact:true}).click();
+  await page.locator('.pdf-pane').nth(1).locator('.textLayer span').first().waitFor();
+  if(await page.getByRole('button',{name:'Reading companion',exact:true}).getAttribute('aria-expanded')!=='true')await page.getByRole('button',{name:'Reading companion',exact:true}).click();
+  await page.getByRole('button',{name:'Voice conversation',exact:true}).click();await phase('paused');
+  await page.getByRole('button',{name:/^(Start listening|Resume listening)$/}).click();await phase('listening');
+  // Generate a fresh mocked exchange after reopen: open-workspace reads real
+  // storage, while earlier synthetic messages live in the mock workspace map.
+  await app.evaluate(({BrowserWindow})=>{const v=globalThis.__folioVoiceTest;v.text='Delete this unwanted voice question.';BrowserWindow.getAllWindows()[0].webContents.send('folio:voice',{sessionId:v.listening,type:'partial',text:v.text});});
+  await phase('speaking');
+  await page.getByRole('button',{name:'Interrupt and speak',exact:true}).click();await phase('listening');
+  const activeBeforeDelete=await mockState();
+  const messageCountBeforeDelete=await page.locator('.fl-message[data-message-id]').count();
+  const answerId=activeBeforeDelete.requests.at(-1).requestId+'-assistant';
+  await page.locator(`[data-message-id="${answerId}"]`).getByRole('button',{name:'Delete this exchange',exact:true}).click();
+  const confirmation=page.getByRole('alertdialog',{name:'Delete this exchange?',exact:true});
+  await confirmation.getByRole('button',{name:'Delete exchange',exact:true}).click();
+  await confirmation.waitFor({state:'detached'});await control().waitFor({state:'detached'});
+  assert.equal(await page.locator('.fl-message[data-message-id]').count(),messageCountBeforeDelete-2);
+  const afterDelete=await mockState();assert.equal(afterDelete.listening,null);assert.equal(afterDelete.speaking,null);
+  assert.equal(afterDelete.requests.length,activeBeforeDelete.requests.length);
+  // A queued recognizer completion from the ended session must not resend it.
+  await app.evaluate(({BrowserWindow},sessionId)=>BrowserWindow.getAllWindows()[0].webContents.send('folio:voice',{sessionId,type:'final',text:'This unwanted transcript arrived too late.'}),activeBeforeDelete.listening);
+  await page.waitForTimeout(1800);
+  assert.equal((await mockState()).requests.length,afterDelete.requests.length);
+  pass('Deleting an exchange ends active voice, clears both messages, and ignores stale speech events');
   assert.deepEqual(errors,[]);
 }catch(error){
   errors.push(error.message);

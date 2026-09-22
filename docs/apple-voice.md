@@ -20,6 +20,12 @@ For Folio 0.4.1 on Mac. Apple recognition and system voices need no extra speech
 
 收起 AI 面板后仍能语音对话，再打开时可看到相同的转写和回答。切换论文、锁屏或退出 Folio 会停止语音；再次使用需要手动开启。
 
+### 删除误录问答
+
+在提问或回答下点击「删除」，确认后同时移除该次提问和对应回答。正在进行的语音会结束，生成中的回答会先停止，删除结果会保存到本地。后续聊天不再引用这轮记录。
+
+关联的自动记忆和摘要也会移除；个人笔记与已导出的文件保留。旧版记忆没有来源关联，若仍含误录内容，请在「记忆」中另行删除。
+
 ### 下载更好的声音，并更改 Mac 默认声音
 
 以下是 macOS 26 的操作路径：
@@ -59,6 +65,12 @@ Folio 不保存原始录音。Apple 识别使用本地处理；问题转写和�
 5. Pause briefly after speaking to send your question to the paper's conversation. The microphone pauses while the answer is read aloud. Use **Interrupt and speak**, pause, or end as needed.
 
 Voice remains available with the AI panel hidden; reopening it shows the same transcript and answer. Switching papers, locking the screen, or quitting Folio stops the session. Start it manually next time.
+
+### Delete unwanted exchanges
+
+Select **Delete** below a question or answer, then confirm to remove both. Active voice ends and any generating answer stops before deletion is saved locally. Future chats no longer include that exchange in their history.
+
+Linked automatic memories and summaries are also removed. Personal notes and exported files are kept. Older memories have no source links; remove any unwanted content from **Memory** separately.
 
 ### Download voices and change the Mac system default
 
@@ -101,9 +113,9 @@ Apple references: [SpeechAnalyzer](https://developer.apple.com/videos/play/wwdc2
 
 ## 0.4.1 release checks / 正式包验证
 
-The final Mac universal package passed the production build, 149 unit tests, and 38 packaged-app UI checks (12 voice, 20 reading, 6 language/update). Voice checks cover startup, reopening a paper, retaining voice preferences without resuming audio, and both tutorial languages. Real Apple file synthesis also passed for nine mixed-language segments using installed Premium Lili and Ava voices. Automated checks use no microphone, speaker playback, or live AI requests; they do not measure subjective naturalness. Intel Mac and older macOS have not been run-tested.
+The final Mac universal package passed the production build, 156 unit tests, and 45 packaged-app UI checks (13 voice, 6 chat deletion, 20 reading, 6 language/update). Voice checks cover startup, reopening a paper, retaining voice preferences without resuming audio, and both tutorial languages. Real Apple file synthesis also passed for nine mixed-language segments using installed Premium Lili and Ava voices. Automated checks use no microphone, speaker playback, or live AI requests; they do not measure subjective naturalness. Intel Mac and older macOS have not been run-tested.
 
-最终 Mac 通用包通过构建、149 项单元测试与 38 项界面检查（语音 12、阅读 20、双语及更新 6），覆盖默认关闭、重开文章不恢复会话、保留音色及双语教程。真实 Apple 文件合成用已安装的高级莉莉和 Ava 完成 9 段混合文本。自动检查不使用麦克风、扬声器或真实 AI，不代表听感评估；Intel Mac 与旧版 macOS 尚未实机测试。
+最终 Mac 通用包通过构建、156 项单元测试与 45 项界面检查（语音 13、问答删除 6、阅读 20、双语及更新 6），覆盖默认关闭、重开文章不恢复会话、保留音色及双语教程。真实 Apple 文件合成用已安装的高级莉莉和 Ava 完成 9 段混合文本。自动检查不使用麦克风、扬声器或真实 AI，不代表听感评估；Intel Mac 与旧版 macOS 尚未实机测试。
 
 ## Previous checks / 历史验证
 
