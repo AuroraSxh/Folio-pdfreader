@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowUpRight, BookOpen, Check, ChevronRight, Database, Download, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, ShieldCheck, SlidersHorizontal, Sparkles, Upload, X, Zap } from 'lucide-react';
 import type { ProviderConfig, ProviderId, Settings } from '../../shared/types';
+import { DEFAULT_UI_FONT_SCALE, normalizeUIFontScale, UI_FONT_SCALES } from '../../shared/uiFont';
 import { useI18n } from '../i18n';
 import UpdatePanel from './UpdatePanel';
 import './ui-components.css';
@@ -15,7 +16,7 @@ export default function SettingsModal({ settings, onClose, onSaved, onRefresh, o
   const { t } = useI18n();
   const PROVIDERS: { id: ProviderId; title: string; subtitle: string }[] = [{ id: 'deepseek', title: 'DeepSeek', subtitle: 'Flash / Pro' }, { id: 'openai', title: 'OpenAI', subtitle: t("GPT 系列", "GPT models") }, { id: 'anthropic', title: 'Anthropic', subtitle: t("Claude 系列", "Claude models") }, { id: 'custom', title: t("自定义", "Custom"), subtitle: t("兼容 OpenAI", "OpenAI compatible") }];
   const SECTIONS = [{ id: 'ai', label: t("AI 阅读助手", "AI assistant"), icon: Sparkles }, { id: 'reading', label: t("阅读偏好", "Reading"), icon: BookOpen }, { id: 'obsidian', label: 'Obsidian', icon: FolderOpen }, { id: 'data', label: t("数据与备份", "Data & backup"), icon: Database }, { id: 'updates', label: t('应用更新', 'Updates'), icon: Download }] as const;
-  const [draft, setDraft] = useState<Settings>(() => ({ ...settings, language: settings.language ?? 'zh-CN', autoCheckUpdates: settings.autoCheckUpdates ?? true, annotationToolbar: settings.annotationToolbar ?? 'floating', providers: Object.fromEntries(Object.entries(settings.providers).map(([key, config]) => [key, { ...config, apiKey: undefined }])) as Settings['providers'] }));
+  const [draft, setDraft] = useState<Settings>(() => ({ ...settings, language: settings.language ?? 'zh-CN', autoCheckUpdates: settings.autoCheckUpdates ?? true, uiFontScale: normalizeUIFontScale(settings.uiFontScale), annotationToolbar: settings.annotationToolbar ?? 'floating', providers: Object.fromEntries(Object.entries(settings.providers).map(([key, config]) => [key, { ...config, apiKey: undefined }])) as Settings['providers'] }));
   const [section, setSection] = useState<(typeof SECTIONS)[number]['id']>(initialSection ?? 'ai');
   useEffect(() => { if (initialSection) setSection(initialSection); }, [initialSection]);
   const [provider, setProvider] = useState<ProviderId>(settings.activeProvider);
@@ -66,6 +67,12 @@ export default function SettingsModal({ settings, onClose, onSaved, onRefresh, o
       <div className="fl-settings-body"><nav className="fl-settings-nav" aria-label={t("设置分类", "Settings categories")}>{SECTIONS.map(item => <button key={item.id} className={section === item.id ? 'active' : ''} onClick={() => setSection(item.id)}><item.icon size={16} />{item.label}{section === item.id && <ChevronRight size={13} />}</button>)}<div className="fl-settings-local"><ShieldCheck size={19} /><span>{t("属于你的研究空间", "Your research space")}</span><p>{t("论文和笔记保存在本机。", "Papers and notes stay on this device.")}<br />{t("API 密钥由系统加密保存。", "API keys are encrypted by your system.")}</p></div></nav>
         <div className="fl-settings-content">
           <label className="fl-field fl-language-setting"><span>语言 / Language</span><select aria-label="语言 / Language" aria-describedby="fl-language-help" value={draft.language} disabled={!!busy} onChange={event => setDraft(previous => ({ ...previous, language: event.target.value as Settings['language'] }))}><option value="zh-CN">简体中文</option><option value="en">English</option></select><small id="fl-language-help">{t('保存后立即切换界面语言；已有论文、对话和笔记保持原文。', 'Changes take effect when saved. Existing papers, conversations, and notes keep their original text.')}</small></label>
+          <section className="fl-field fl-font-setting" aria-labelledby="fl-font-label">
+            <div className="fl-font-heading"><strong id="fl-font-label">{t('软件文字大小', 'App text size')}</strong><button type="button" className="fl-text-link" disabled={!!busy || draft.uiFontScale === DEFAULT_UI_FONT_SCALE} onClick={() => setDraft(previous => ({ ...previous, uiFontScale: DEFAULT_UI_FONT_SCALE }))}>{t('恢复默认', 'Reset to default')}</button></div>
+            <div className="fl-font-options" role="group" aria-labelledby="fl-font-label" aria-describedby="fl-font-help">{UI_FONT_SCALES.map(scale => <button key={scale} type="button" disabled={!!busy} aria-pressed={draft.uiFontScale === scale} onClick={() => setDraft(previous => ({ ...previous, uiFontScale: scale }))}>{Math.round(scale * 100)}%{scale === DEFAULT_UI_FONT_SCALE && <small>{t('默认', 'Default')}</small>}</button>)}</div>
+            <div className="fl-font-preview" style={{ '--ui-font-scale': draft.uiFontScale } as CSSProperties} aria-label={t('文字大小预览', 'Text size preview')}><strong>{t('阅读伙伴', 'Reading companion')}</strong><p>{t('把正文和补充材料放在一起，让每个问题都能找到出处。', 'Read the paper alongside its supplements, and follow each answer back to its source.')}</p></div>
+            <small id="fl-font-help">{t('保存后调整界面、AI 回答和笔记的字号。PDF 缩放保持不变。', 'Applies to the interface, AI answers, and notes when saved. PDF zoom stays the same.')}</small>
+          </section>
           <div className="fl-settings-divider" />
           {section === 'updates' && <UpdatePanel autoCheckUpdates={draft.autoCheckUpdates} onAutoCheckUpdatesChange={enabled => setDraft(previous => ({ ...previous, autoCheckUpdates: enabled }))} disabled={!!busy} />}
           {section === 'ai' && <>

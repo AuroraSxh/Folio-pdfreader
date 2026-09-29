@@ -15,8 +15,9 @@ import { I18nProvider, useI18n } from './i18n';
 import { normalizeLanguage, translate, type Language } from '../shared/i18n';
 import { UpdateNotice } from './components/UpdatePanel';
 import VoiceGuide from './components/VoiceGuide';
+import { applyUIFontScale } from './uiFont';
 
-type Navigation = {page:number;nonce:number};
+type Navigation = {documentId:string;page:number;nonce:number;quote?:string};
 const errorText=(e:unknown)=>e instanceof Error?e.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/,''):String(e);
 
 export default function App(){
@@ -45,6 +46,8 @@ function FolioApp({onLanguageChange}:{onLanguageChange:(language:Language)=>void
   const [busy,setBusy]=useState(false),[toast,setToast]=useState<{text:string;error:boolean}|null>(null);
   const [selection,setSelection]=useState<TextSelection|null>(null),[activePane,setActivePane]=useState<'left'|'right'>('left');
   const [nav,setNav]=useState<{left?:Navigation;right?:Navigation}>({});
+  const navigationRequest=useRef(0);
+  const navigationQueue=useRef<Promise<void>>(Promise.resolve());
   const [dragging,setDragging]=useState(false),[metadata,setMetadata]=useState(false),[docMenu,setDocMenu]=useState<string|null>(null);
   const [help,setHelp]=useState(false),[confirm,setConfirm]=useState<{title:string;description:string;action:()=>Promise<void>}|null>(null);
   const [rename,setRename]=useState<PaperDocument|null>(null);
@@ -85,8 +88,9 @@ function FolioApp({onLanguageChange}:{onLanguageChange:(language:Language)=>void
     return window.folio.onOpen(ws=>{update(ws);setActiveId(ws.id);setFilter(value=>value==='removed'?'all':value);setSelection(null);});
   },[update]);
   useEffect(()=>{document.documentElement.dataset.theme=data?.settings.theme??'light';},[data?.settings.theme]);
+  useEffect(()=>{applyUIFontScale(data?.settings.uiFontScale);},[data?.settings.uiFontScale]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(null),toast.error?12000:5000);return()=>clearTimeout(timer);},[toast]);
-  useEffect(()=>{setSelection(null);setNav({});setDocMenu(null);setActivePane('left');readingLayout.exitFocus();setAnnotationTool(value=>({...value,armed:false}));},[activeId]);
+  useEffect(()=>{navigationRequest.current++;setSelection(null);setNav({});setDocMenu(null);setActivePane('left');readingLayout.exitFocus();setAnnotationTool(value=>({...value,armed:false}));},[activeId]);
 
   const patch=useCallback(async(id:string,value:Parameters<typeof window.folio.updateWorkspace>[1])=>{try{const ws=await window.folio.updateWorkspace(id,value);update(ws);return ws;}catch(e){onError(errorText(e));}},[update,onError]);
   const open=useCallback((id:string)=>{setActiveId(id);setFilter(value=>value==='removed'?'all':value);void patch(id,{lastReadAt:Date.now()});},[patch]);
@@ -105,11 +109,27 @@ function FolioApp({onLanguageChange}:{onLanguageChange:(language:Language)=>void
   });},[create,addDocuments,toggleSplit,setLayout,run,inform,readingLayout.toggleAssistant,readingLayout.toggleFocus,documentEdits.undo,t]);
   useEffect(()=>{const handler=(e:KeyboardEvent)=>{if(e.key==='Escape'){setDocMenu(null);setHelp(false);}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler);},[]);
 
-  const navigate=(docId:string,page:number)=>{
-    if(!workspace)return;
-    const pane=workspace.layout.split&&workspace.layout.rightId===docId?'right':'left';
-    if(pane==='left'&&workspace.layout.leftId!==docId)void patch(workspace.id,{layout:{...workspace.layout,leftId:docId}});
-    setNav(v=>({...v,[pane]:{page,nonce:Date.now()}}));setActivePane(pane);
+  const navigate=(docId:string,page:number,quote?:string)=>{
+    const workspaceId=activeRef.current?.id;
+    if(!workspaceId||!Number.isSafeInteger(page)||page<1)return;
+    const request=++navigationRequest.current;
+    // Serialize document switches, including a click on an already visible PDF.
+    // Otherwise an earlier import/layout response could replace the last source.
+    navigationQueue.current=navigationQueue.current.then(async()=>{
+      const ws=activeRef.current;
+      if(ws?.id!==workspaceId||request!==navigationRequest.current||!ws.documents.some(doc=>doc.id===docId))return;
+      const both=ws.layout.split&&ws.layout.leftId===docId&&ws.layout.rightId===docId;
+      const pane=both?activePane:ws.layout.split&&ws.layout.rightId===docId?'right':'left';
+      if(pane==='left'&&ws.layout.leftId!==docId){
+        const next=await patch(ws.id,{layout:{...ws.layout,leftId:docId}});
+        if(!next||activeRef.current?.id!==workspaceId)return;
+        // The next queued click must see the completed switch even before
+        // React has committed the matching render.
+        if(activeRef.current.updatedAt<=next.updatedAt)activeRef.current=next;
+      }
+      if(activeRef.current?.id!==workspaceId||request!==navigationRequest.current)return;
+      setNav({[pane]:{documentId:docId,page,nonce:request,quote}});setActivePane(pane);
+    }).catch(cause=>onError(errorText(cause)));
   };
   const splitFromPane=(side:'left'|'right',doc:PaperDocument,direction:'vertical'|'horizontal'|'none')=>{
     const ws=activeRef.current;if(!ws)return;
@@ -160,8 +180,8 @@ function FolioApp({onLanguageChange}:{onLanguageChange:(language:Language)=>void
   const right=workspace?.documents.find(d=>d.id===workspace.layout.rightId)??workspace?.documents[1]??left;
   const paneLabel=(side:'left'|'right')=>horizontal?(side==='left'?t("上方","Top"):t("下方","Bottom")):(side==='left'?t("左侧","Left"):t("右侧","Right"));
   const renderPane=(side:'left'|'right',doc:PaperDocument|undefined)=>doc&&workspace?<section className={`reading-column ${activePane===side?'is-active':''}`} aria-label={t("{v0}阅读区","{v0} reading pane",{v0:(paneLabel(side))})} onPointerDownCapture={()=>setActivePane(side)}>
-    <header className="document-tab"><span className={`document-role ${doc.role}`}>{doc.role==='main'?t("正文","Main"):t("补充","Supplement")}</span><FileText size={14}/><select aria-label={`${paneLabel(side)} PDF`} value={doc.id} onChange={e=>void patch(workspace.id,{layout:{...workspace.layout,[side==='left'?'leftId':'rightId']:e.target.value}})}>{workspace.documents.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select><ChevronDown size={12}/>{side==='right'&&<button className="icon-button" title={t("关闭第二阅读区","Close second pane")} onClick={toggleSplit}><X size={14}/></button>}</header>
-    <PdfPane key={`${workspace.id}-${side}-${doc.id}`} workspaceId={workspace.id} document={{...doc,view:workspace.layout.views?.[side]?.documentId===doc.id?workspace.layout.views[side]!.state:doc.view}} readingTheme={data.settings.readingTheme} editBusy={documentEdits.busy} annotationToolbar={data.settings.annotationToolbar} annotationToolbarHost={annotationHost} annotationTool={annotationTool} onAnnotationToolChange={value=>setAnnotationTool(previous=>({...previous,...value}))} onAnnotationToolbarChange={mode=>void changeAnnotationToolbar(mode)} active={activePane===side} onActivate={()=>setActivePane(side)} onDocumentPatch={async value=>{try{if(value.view)update(await window.folio.updateView(workspace.id,doc.id,side,value.view));const rest={...value};delete rest.view;if(Object.keys(rest).length)await documentEdits.editDocument(workspace.id,doc.id,rest);}catch(e){onError(errorText(e));throw e;}}} onIndexed={index=>void window.folio.indexDocument(workspace.id,doc.id,index).then(update).catch(e=>onError(errorText(e)))} onSelection={setSelection} onAsk={value=>{setSelection(value);readingLayout.openAssistant();setAskFocus({workspaceId:workspace.id,nonce:Date.now()});}} onError={onError} navigation={nav[side]} onSplit={direction=>splitFromPane(side,doc,direction)}/>
+    <header className="document-tab"><span className={`document-role ${doc.role}`}>{doc.role==='main'?t("正文","Main"):t("补充","Supplement")}</span><FileText size={14}/><select aria-label={`${paneLabel(side)} PDF`} value={doc.id} onChange={e=>{navigationRequest.current++;setNav(previous=>({...previous,[side]:undefined}));void patch(workspace.id,{layout:{...workspace.layout,[side==='left'?'leftId':'rightId']:e.target.value}});}}>{workspace.documents.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select><ChevronDown size={12}/>{side==='right'&&<button className="icon-button" title={t("关闭第二阅读区","Close second pane")} onClick={toggleSplit}><X size={14}/></button>}</header>
+    <PdfPane key={`${workspace.id}-${side}-${doc.id}`} workspaceId={workspace.id} document={{...doc,view:workspace.layout.views?.[side]?.documentId===doc.id?workspace.layout.views[side]!.state:doc.view}} readingTheme={data.settings.readingTheme} editBusy={documentEdits.busy} annotationToolbar={data.settings.annotationToolbar} annotationToolbarHost={annotationHost} annotationTool={annotationTool} onAnnotationToolChange={value=>setAnnotationTool(previous=>({...previous,...value}))} onAnnotationToolbarChange={mode=>void changeAnnotationToolbar(mode)} active={activePane===side} onActivate={()=>setActivePane(side)} onDocumentPatch={async value=>{try{if(value.view)update(await window.folio.updateView(workspace.id,doc.id,side,value.view));const rest={...value};delete rest.view;if(Object.keys(rest).length)await documentEdits.editDocument(workspace.id,doc.id,rest);}catch(e){onError(errorText(e));throw e;}}} onIndexed={index=>void window.folio.indexDocument(workspace.id,doc.id,index).then(update).catch(e=>onError(errorText(e)))} onSelection={setSelection} onAsk={value=>{setSelection(value);readingLayout.openAssistant();setAskFocus({workspaceId:workspace.id,nonce:Date.now()});}} onError={onError} navigation={nav[side]?.documentId===doc.id?nav[side]:undefined} onSplit={direction=>splitFromPane(side,doc,direction)}/>
   </section>:<div className="no-pdf"><FileText size={35}/><h3>{t("给这篇论文添加 PDF","Add a PDF to this paper")}</h3><p>{t("导入的旧笔记已保留，可以在这里继续阅读。","Your imported notes are saved. Add a PDF to continue reading.")}</p><button className="primary-button" onClick={()=>addDocuments()}><Plus size={15}/>{t(" 添加 PDF"," Add PDF")}</button></div>;
 
   return <div className={`folio-app ${readingLayout.focused&&workspace?'focus-reading':''}`} data-platform={PLATFORM} onDragEnter={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();dragDepth.current++;setDragging(true);}}} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDragLeave={e=>{e.preventDefault();if(--dragDepth.current<=0){dragDepth.current=0;setDragging(false);}}} onDrop={drop}>

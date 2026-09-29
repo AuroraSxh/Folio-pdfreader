@@ -1,8 +1,8 @@
-Pairleaf 0.5.0（原 Folio）· Windows 10 / 11 x64
+Pairleaf 0.5.1（原 Folio）· Windows 10 / 11 x64
 
 中文
-安装版：运行 Pairleaf-0.5.0-windows-x64-setup.exe，按向导完成安装。
-免安装版：运行 Pairleaf-0.5.0-windows-x64-portable.exe，无需安装向导；首次启动会临时解包。
+安装版：运行 Pairleaf-0.5.1-windows-x64-setup.exe，按向导完成安装。
+免安装版：运行 Pairleaf-0.5.1-windows-x64-portable.exe，无需安装向导；首次启动会临时解包。
 更新前退出 Folio 或 Pairleaf。安装版按向导更新；免安装版改用新的 EXE。不要同时运行新旧版本编辑同一库。
 论文、笔记和设置保存在用户目录，保留原有数据；免安装不代表数据自动跟随 EXE。
 默认论文库仍是「文档/Folio Library」，设置仍在 %APPDATA%\Folio；这些旧名称有意保留，自定义库路径继续使用。请不要为了更名删除数据目录。
@@ -17,8 +17,8 @@ Windows 系统语音为实验性功能，使用本机 System.Speech / SAPI 识�
 尚未经过 Windows 实机或虚拟机安装、收音、朗读和资源占用验证。Mac 上的交叉构建或模拟界面检查不能代替 Windows 实机测试。
 
 English
-Installer: run Pairleaf-0.5.0-windows-x64-setup.exe and follow the wizard.
-Portable: run Pairleaf-0.5.0-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
+Installer: run Pairleaf-0.5.1-windows-x64-setup.exe and follow the wizard.
+Portable: run Pairleaf-0.5.1-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
 Quit Folio or Pairleaf before updating. Follow the installer, or use the new portable EXE. Do not run both versions against the same library.
 Papers, notes, and settings stay in your user folders. Portable does not mean the library travels with the EXE.
 The default library remains Documents/Folio Library, and settings stay in %APPDATA%\Folio. These names are intentional; custom library paths are preserved. Do not delete data folders because of the rename.
@@ -32,6 +32,10 @@ The speech helper uses .NET Framework 4.8 or compatible 4.8.1, normally included
 This build is unsigned. Download it from the official GitHub Releases page.
 Windows hardware/VM installation, microphone capture, playback, and resource use have not been tested. Cross-builds and simulated UI checks on Mac do not replace Windows device testing.
 
-Downloads / 下载：https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.0
+Downloads / 下载：https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1
 Voice guide / 语音教程：https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/windows-voice.md
 Migration / 更名说明：https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md
+
+文字大小与原文定位 / Text size and sources
+在设置中选择软件文字大小（100%–150%），保存后生效，不改变 PDF 缩放。点击带引用的 AI 回答可定位原文；摘录核对成功时临时高亮，按 Esc 清除。旧回答只有页码时仍可跳页。
+Choose App text size (100%–150%) in Settings and save; PDF zoom is independent. Click a cited AI answer to jump to its source; verified excerpts receive a temporary highlight, cleared with Esc. Older page-only citations still jump to the cited page.

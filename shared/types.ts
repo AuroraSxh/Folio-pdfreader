@@ -7,6 +7,8 @@ export interface Settings {
   libraryPath: string; vaultPath: string; obsidianSubfolder: string;
   autoSummary: boolean; autoMemory: boolean; contextMaxChars: number;
   theme: 'light' | 'dark'; readingTheme: 'white' | 'sepia' | 'dark';
+  /** Optional in legacy settings. Controls app text, independently of PDF zoom. */
+  uiFontScale?: number;
   annotationToolbar: 'floating' | 'fixed' | 'selection';
 }
 export interface OutlineItem { id: string; title: string; page: number; children: OutlineItem[] }

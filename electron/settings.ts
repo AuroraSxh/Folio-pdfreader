@@ -4,6 +4,7 @@ import { safeStorage } from 'electron';
 import { atomicWrite } from './store';
 import type { Settings, ProviderId } from '../shared/types';
 import { normalizeLanguage, translate, type Language } from '../shared/i18n';
+import { DEFAULT_UI_FONT_SCALE, normalizeUIFontScale } from '../shared/uiFont';
 
 export function defaultSettings(libraryPath:string):Settings {
   return {language:'zh-CN',autoCheckUpdates:true,activeProvider:'deepseek',providers:{
@@ -11,7 +12,7 @@ export function defaultSettings(libraryPath:string):Settings {
     openai:{id:'openai',baseURL:'https://api.openai.com/v1',model:'',maxTokens:8192},
     anthropic:{id:'anthropic',baseURL:'https://api.anthropic.com',model:'',maxTokens:8192},
     custom:{id:'custom',baseURL:'http://127.0.0.1:11434/v1',model:'',maxTokens:8192}
-  },libraryPath,vaultPath:'',obsidianSubfolder:'Papers',autoSummary:false,autoMemory:true,contextMaxChars:180000,theme:'light',readingTheme:'white',annotationToolbar:'floating'};
+  },libraryPath,vaultPath:'',obsidianSubfolder:'Papers',autoSummary:false,autoMemory:true,contextMaxChars:180000,theme:'light',readingTheme:'white',annotationToolbar:'floating',uiFontScale:DEFAULT_UI_FONT_SCALE};
 }
 
 export class SettingsStore {
@@ -27,6 +28,7 @@ export class SettingsStore {
     this.config={...defaults,...stored,libraryPath:defaults.libraryPath,providers:{...defaults.providers}} as Settings;
     this.config.language=normalizeLanguage(stored.language);
     this.config.autoCheckUpdates=stored.autoCheckUpdates!==false;
+    this.config.uiFontScale=normalizeUIFontScale(stored.uiFontScale);
     if(!['floating','fixed','selection'].includes(this.config.annotationToolbar))this.config.annotationToolbar='floating';
     for(const id of Object.keys(defaults.providers) as ProviderId[]){
       const raw=((stored.providers as Record<string,unknown>)?.[id]??{}) as Record<string,unknown>;
@@ -49,6 +51,7 @@ export class SettingsStore {
     const next=this.get();
     next.language=language;
     next.autoCheckUpdates=input.autoCheckUpdates!==false;
+    next.uiFontScale=normalizeUIFontScale(input.uiFontScale);
     next.activeProvider=input.activeProvider;
     for(const id of Object.keys(next.providers) as ProviderId[]){
       const p=input.providers[id];if(!p)continue;

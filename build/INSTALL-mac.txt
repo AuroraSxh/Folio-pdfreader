@@ -1,4 +1,4 @@
-Pairleaf 0.5.0 — 学术 PDF 阅读器（原 Folio）
+Pairleaf 0.5.1 — 学术 PDF 阅读器（原 Folio）
 
 适用：macOS 13 或更高版本；此通用安装包包含 Apple Silicon 与 Intel 两种架构。
 
@@ -92,3 +92,7 @@ This Mac build is ad-hoc signed, without Apple Developer ID signing or notarizat
 
 迁移说明 / Migration guide:
 https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md
+
+文字大小与原文定位 / Text size and sources
+在设置中选择软件文字大小（100%–150%），保存后生效，不改变 PDF 缩放。点击带引用的 AI 回答可定位原文；摘录核对成功时临时高亮，按 Esc 清除。旧回答只有页码时仍可跳页。
+Choose App text size (100%–150%) in Settings and save; PDF zoom is independent. Click a cited AI answer to jump to its source; verified excerpts receive a temporary highlight, cleared with Esc. Older page-only citations still jump to the cited page.

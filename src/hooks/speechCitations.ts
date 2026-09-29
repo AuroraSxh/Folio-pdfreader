@@ -9,12 +9,13 @@ export function speechCitations(text: string, sources: SpeechSource[] = [], lang
   const names = new Map<string, SpeechSource>();
   for (const source of sources) for (const name of [source.name, source.fileName]) if (name && !names.has(name)) names.set(name, source);
   const isReference = (label: string) => {
-    const match = label.match(new RegExp(`^(.+?)${SEP}${PAGE}$`, 'i'));
+    // Source excerpts are navigation metadata, not a second sentence to read aloud.
+    const match = label.split(/\\?[|｜]/, 1)[0].trim().match(new RegExp(`^(.+?)${SEP}${PAGE}$`, 'i'));
     return !!match && ([...names.keys()].some(name => name.toLowerCase() === match[1].trim().toLowerCase()) || /\.pdf$/i.test(match[1].trim()));
   };
   // Strip full local-citation links before generic Markdown removes their URLs.
   let output = text.replace(/\[([^\]\n]{1,500})\]\((folio-cite:\/\/[^)\s]+)\)/gi, '');
-  output = output.replace(/\[([^\]\n]{1,500})\](?:\(([^)\s]+)\))?/g,
+  output = output.replace(/\[([^\]\n]{1,1600})\](?:\(([^)\s]+)\))?/g,
     (original, label: string) => isReference(label) ? '' : original);
   const location = (name: string, start: string, end?: string) => {
     const source = names.get(name);

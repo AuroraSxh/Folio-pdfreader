@@ -273,7 +273,7 @@ try {
   assert.equal(requests.length,1);
   await writeFile(path.join(output,'mock-request.json'),JSON.stringify(requests[0],null,2));
   assert.ok(JSON.stringify(requests[0].messages).includes('Additional supplementary evidence'));
-  await page.getByRole('link',{name:'Supplementary materials.pdf p.2',exact:true}).click();
+  await page.getByRole('button',{name:'查看原文：Supplementary materials.pdf，第 2 页',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('input[aria-label="当前页码"]')[1]?.value==='2');
   await page.screenshot({path:path.join(output,'05-ai-citations.png')});
   assert.equal(await page.locator('.fl-message.user').count(),1);

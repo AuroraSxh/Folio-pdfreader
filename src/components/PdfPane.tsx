@@ -7,11 +7,13 @@ import type { Annotation, DocumentIndex, OutlineItem, PaperDocument, Settings, T
 import { changeOutline, locateOutline } from '../pdf/outline';
 import { hasPdfIndex, loadPdf, readSharedPdfIndex } from '../pdf/documentIndex';
 import { markupRect, viewportRectPercent, type MarkupKind } from '../pdf/markupGeometry';
+import { sourceQuoteClientRects } from '../pdf/sourceHighlight';
 import { beginAnnotationWrite, isAnnotationSaving, subscribeAnnotationWrites } from '../pdf/annotationWrites';
 import { hasPrimaryModifier, shortcutLabel } from '../platform';
 import { useI18n } from '../i18n';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdf-pane.css';
+import './source-highlight.css';
 
 interface PdfPaneProps {
   workspaceId: string;
@@ -24,7 +26,7 @@ interface PdfPaneProps {
   onAnnotationToolbarChange?: (mode: 'floating' | 'fixed') => void;
   active: boolean;
   editBusy?: boolean;
-  navigation?: { page: number; nonce: number };
+  navigation?: { page: number; nonce: number; quote?: string };
   onActivate: () => void;
   onDocumentPatch: (patch: Partial<Pick<PaperDocument, 'name' | 'role' | 'outline' | 'annotations' | 'view'>>) => void | Promise<void>;
   onIndexed: (index: DocumentIndex) => void;
@@ -36,6 +38,11 @@ interface PdfPaneProps {
 
 type SelectionBundle = { parts: TextSelection[]; text: string };
 type SidebarTab = 'outline' | 'thumbnails' | 'annotations';
+type SourceStatus = 'locating' | 'matched' | 'page-only' | 'unmatched' | 'invalid';
+interface SourceLocation {
+  page: number; nonce: number; quote?: string; status: SourceStatus;
+  rects?: number[][]; layer?: HTMLElement; rotation?: number; scrolled?: boolean;
+}
 const COLORS = ['#f5ce65', '#a7d7b8', '#a7c7f1', '#d0b5e7', '#efaeb8'];
 const COLOR_NAMES = [['黄色', 'Yellow'], ['绿色', 'Green'], ['蓝色', 'Blue'], ['紫色', 'Purple'], ['粉色', 'Pink']] as const;
 const messageOf = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -132,6 +139,8 @@ export default function PdfPane(props: PdfPaneProps) {
   const viewPending = useRef<ViewState | null>(null);
   const annotationGroups = useRef<{ source?: Annotation[]; pages: Map<number, { items: Annotation[]; signature: string }> }>({ pages: new Map() });
   const annotationLayers = useRef(new WeakMap<HTMLElement, { signature: string; rotation: number; locale: string; layer: HTMLElement }>());
+  const sourceLocation = useRef<SourceLocation | null>(null);
+  const [sourceFeedback, setSourceFeedback] = useState<{ page: number; status: SourceStatus } | null>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageCount, setPageCount] = useState(paper.pageCount);
   const [page, setPage] = useState(paper.view.page);
@@ -289,6 +298,87 @@ export default function PdfPane(props: PdfPaneProps) {
     if (viewer?.pagesCount && Number.isFinite(target)) viewer.currentPageNumber = clamp(Math.round(target), 1, viewer.pagesCount);
   }, []);
 
+  const clearSourceHighlight = useCallback(() => {
+    sourceLocation.current?.layer?.remove();
+    sourceLocation.current = null;
+    setSourceFeedback(null);
+  }, []);
+
+  const resolveSourceHighlight = useCallback((onlyPage?: number, textError = false) => {
+    const source = sourceLocation.current;
+    const viewer = viewerRef.current;
+    const container = containerRef.current;
+    if (!source || !viewer?.pagesCount || !container || (onlyPage && onlyPage !== source.page)) return;
+    const report = (status: SourceStatus) => {
+      if (source.status === status) return;
+      source.status = status;
+      setSourceFeedback({ page: source.page, status });
+    };
+    if (!Number.isInteger(source.page) || source.page < 1 || source.page > viewer.pagesCount) { report('invalid'); return; }
+    if (!source.quote) { report('page-only'); return; }
+    const pageView = viewer.getPageView(source.page - 1);
+    if (!pageView?.viewport || !pageView.div) return;
+    if (!source.rects && source.status === 'locating') {
+      if (textError) { report('unmatched'); return; }
+      const textLayer = pageView.div.querySelector('.textLayer') as HTMLElement | null;
+      // PDF.js appends endOfContent only when every text span has rendered.
+      // Waiting for its event avoids matching incomplete or offscreen pages.
+      if (!textLayer || textLayer.hidden || !textLayer.querySelector('.endOfContent')) return;
+      const result = sourceQuoteClientRects(textLayer, source.quote);
+      if (result.status !== 'matched') { report('unmatched'); return; }
+      const bounds = pageView.div.getBoundingClientRect();
+      const factorX = pageView.div.clientWidth / pageView.viewport.width;
+      const factorY = pageView.div.clientHeight / pageView.viewport.height;
+      if (!factorX || !factorY) return;
+      const rects: number[][] = [];
+      const seen = new Set<string>();
+      for (const rect of result.rects) {
+        const left = Math.max(rect.left, bounds.left + pageView.div.clientLeft);
+        const top = Math.max(rect.top, bounds.top + pageView.div.clientTop);
+        const right = Math.min(rect.right, bounds.right - pageView.div.clientLeft);
+        const bottom = Math.min(rect.bottom, bounds.bottom - pageView.div.clientTop);
+        if (right - left < .5 || bottom - top < .5) continue;
+        const first = pageView.viewport.convertToPdfPoint((left - bounds.left - pageView.div.clientLeft) / factorX, (top - bounds.top - pageView.div.clientTop) / factorY);
+        const second = pageView.viewport.convertToPdfPoint((right - bounds.left - pageView.div.clientLeft) / factorX, (bottom - bounds.top - pageView.div.clientTop) / factorY);
+        const normalized = [Math.min(first[0], second[0]), Math.min(first[1], second[1]), Math.max(first[0], second[0]), Math.max(first[1], second[1])];
+        const key = normalized.map(value => value.toFixed(1)).join(',');
+        if (!seen.has(key)) { rects.push(normalized); seen.add(key); }
+      }
+      if (!rects.length) { report('unmatched'); return; }
+      source.rects = rects;
+      report('matched');
+    }
+    if (!source.rects?.length) return;
+    // These marks are transient: no annotations, edits, search state or undo
+    // entries are changed. PDF coordinates survive zoom, rotation and eviction.
+    if (source.layer?.parentElement !== pageView.div || source.rotation !== pageView.viewport.rotation) {
+      source.layer?.remove();
+      const layer = window.document.createElement('div');
+      layer.className = 'folio-source-layer';
+      layer.setAttribute('aria-hidden', 'true');
+      for (const rect of source.rects) {
+        const mark = window.document.createElement('span');
+        mark.className = 'folio-source-mark';
+        const position = viewportRectPercent(rect, pageView.viewport);
+        Object.assign(mark.style, { left: `${position.left}%`, top: `${position.top}%`, width: `${position.width}%`, height: `${position.height}%` });
+        layer.append(mark);
+      }
+      pageView.div.append(layer);
+      source.layer = layer;
+      source.rotation = pageView.viewport.rotation;
+    }
+    if (!source.scrolled && source.layer?.firstElementChild) {
+      source.scrolled = true;
+      const match = source.layer.firstElementChild.getBoundingClientRect();
+      const viewport = container.getBoundingClientRect();
+      container.scrollBy({
+        top: match.top + match.height / 2 - viewport.top - viewport.height / 2,
+        left: match.left < viewport.left || match.right > viewport.right ? match.left + match.width / 2 - viewport.left - viewport.width / 2 : 0,
+        behavior: 'instant',
+      });
+    }
+  }, []);
+
   const openAnnotation = useCallback((annotation: Annotation) => {
     setAnnotationId(annotation.id); setCommentDraft(annotation.comment); setAnnotationKindDraft(annotation.kind ?? 'highlight'); setAnnotationColorDraft(annotation.color); setNewComment(false); setSidebar('annotations');
   }, []);
@@ -399,6 +489,7 @@ export default function PdfPane(props: PdfPaneProps) {
     linkService.setViewer(viewer);
     viewerRef.current = viewer;
     busRef.current = eventBus;
+    clearSourceHighlight();
     setPdf(null); setFailure(null); setStatus('opening'); setPageCount(0); setSelection(null); setLocalHighlightArmed(false); setNewComment(false); setPasswordRequest(null); setOutlineSelection(null); setAnnotationId(null); setSearch(''); setMatches({ current: 0, total: 0 }); setIndexing(false); setContextMenu(null); setCopied(false);
 
     let lastViewKey = JSON.stringify(initial);
@@ -437,12 +528,13 @@ export default function PdfPane(props: PdfPaneProps) {
     const onSpreadMode = ({ mode }: { mode: number }) => { setSpreadMode(mode); persist(); };
     eventBus.on('pagechanging', onPage);
     eventBus.on('scalechanging', onScale);
-    eventBus.on('rotationchanging', () => { persist(); requestAnimationFrame(() => !disposed && renderAnnotations()); });
+    eventBus.on('rotationchanging', () => { persist(); requestAnimationFrame(() => { if (!disposed) { renderAnnotations(); resolveSourceHighlight(); } }); });
     eventBus.on('scrollmodechanged', onScrollMode);
     eventBus.on('spreadmodechanged', onSpreadMode);
     eventBus.on('pagerendered', ({ pageNumber, error }: { pageNumber: number; error?: Error }) => {
-      if (!disposed) { renderAnnotations(pageNumber); if (error) latest.current.onError(latest.current.t('第 {page} 页渲染失败：{error}', 'Unable to render page {page}: {error}', { page: pageNumber, error: error.message })); }
+      if (!disposed) { renderAnnotations(pageNumber); resolveSourceHighlight(pageNumber, !!error); if (error) latest.current.onError(latest.current.t('第 {page} 页渲染失败：{error}', 'Unable to render page {page}: {error}', { page: pageNumber, error: error.message })); }
     });
+    eventBus.on('textlayerrendered', ({ pageNumber, error }: { pageNumber: number; error?: Error }) => { if (!disposed) resolveSourceHighlight(pageNumber, !!error); });
     const updateMatches = (next: { current: number; total: number }) => setMatches(previous => previous.current === next.current && previous.total === next.total ? previous : next);
     eventBus.on('updatefindmatchescount', ({ matchesCount }: { matchesCount: { current: number; total: number } }) => { if (!disposed) updateMatches(matchesCount); });
     eventBus.on('updatefindcontrolstate', ({ state, matchesCount }: { state: number; matchesCount: { current: number; total: number } }) => { if (!disposed) { setFindPending(state === 3); updateMatches(matchesCount); } });
@@ -457,6 +549,7 @@ export default function PdfPane(props: PdfPaneProps) {
       ready = true;
       setStatus('');
       viewer.update();
+      resolveSourceHighlight();
     });
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     let lastWidth = container.clientWidth, lastHeight = container.clientHeight;
@@ -544,15 +637,26 @@ export default function PdfPane(props: PdfPaneProps) {
       if (viewPending.current) { submitPatch(patchThisDocument, { view: viewPending.current }); viewPending.current = null; }
       resize.disconnect();
       abortController.abort();
+      sourceLocation.current?.layer?.remove();
+      sourceLocation.current = null;
       viewerRef.current = null; busRef.current = null;
       // Runtime accepts null to release page views, listeners, and render tasks.
       viewer.setDocument(null as unknown as PDFDocumentProxy);
       linkService.setDocument(null);
       void loadingTask?.destroy();
     };
-  }, [workspaceId, paper.id, attempt, renderAnnotations, updatePageLabels]);
+  }, [workspaceId, paper.id, attempt, renderAnnotations, updatePageLabels, clearSourceHighlight, resolveSourceHighlight]);
 
-  useEffect(() => { if (navigation && pdf) goToPage(navigation.page); }, [navigation?.nonce, pdf, goToPage]);
+  useEffect(() => {
+    if (!navigation) { clearSourceHighlight(); return; }
+    if (sourceLocation.current?.nonce !== navigation.nonce) {
+      clearSourceHighlight();
+      const quote = navigation.quote?.trim();
+      sourceLocation.current = { page: navigation.page, nonce: navigation.nonce, quote, status: 'locating' };
+      setSourceFeedback({ page: navigation.page, status: 'locating' });
+    }
+    if (pdf) { goToPage(navigation.page); resolveSourceHighlight(); }
+  }, [navigation?.nonce, navigation?.page, navigation?.quote, pdf, workspaceId, paper.id, clearSourceHighlight, goToPage, resolveSourceHighlight]);
   useEffect(() => { if (passwordRequest) requestAnimationFrame(() => passwordInputRef.current?.focus()); }, [passwordRequest]);
 
   const find = useCallback((type = '', previous = false) => {
@@ -568,7 +672,7 @@ export default function PdfPane(props: PdfPaneProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       if (!event.shiftKey && hasPrimaryModifier(event) && event.key.toLowerCase() === 'f') { event.preventDefault(); setSearchOpen(true); requestAnimationFrame(() => { searchRef.current?.focus(); searchRef.current?.select(); }); return; }
-      if (event.key === 'Escape') { setSearchOpen(false); setSelection(null); setHighlightArmed(false); setNewComment(false); setOptionsOpen(false); return; }
+      if (event.key === 'Escape') { setSearchOpen(false); setSelection(null); setHighlightArmed(false); setNewComment(false); setOptionsOpen(false); clearSourceHighlight(); return; }
       if ((event.target as HTMLElement)?.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (event.key === 'PageDown') { event.preventDefault(); viewerRef.current?.nextPage(); }
       if (event.key === 'PageUp') { event.preventDefault(); viewerRef.current?.previousPage(); }
@@ -579,7 +683,7 @@ export default function PdfPane(props: PdfPaneProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, goToPage, pageCount]);
+  }, [active, goToPage, pageCount, clearSourceHighlight]);
 
   const readSelection = (): SelectionBundle | null => {
     const selected = window.getSelection();
@@ -790,6 +894,18 @@ export default function PdfPane(props: PdfPaneProps) {
           event.preventDefault(); event.stopPropagation();
           if (/^https?:|^mailto:/i.test(href)) void window.folio.openExternal(href).catch(error => latest.current.onError(latest.current.t('无法打开链接：{error}', 'Unable to open link: {error}', { error: messageOf(error) })));
         }}><div ref={viewerElementRef} className="pdfViewer" /></div>
+        {sourceFeedback && !status && !failure && <div className="pdf-source-feedback" data-source-status={sourceFeedback.status} role="status">
+          <span>{sourceFeedback.status === 'matched'
+            ? t('已高亮第 {page} 页的引用原文', 'Source passage highlighted on page {page}', { page: sourceFeedback.page })
+            : sourceFeedback.status === 'page-only'
+              ? t('已定位到第 {page} 页；此引用未提供原文片段', 'Opened page {page}; this citation has no source excerpt', { page: sourceFeedback.page })
+              : sourceFeedback.status === 'unmatched'
+                ? t('已定位到引用页，未找到可确认的原文片段', 'Opened the cited page; no source passage could be confirmed')
+                : sourceFeedback.status === 'invalid'
+                  ? t('此引用页码超出了文档范围', 'This citation points outside the document')
+                  : t('正在定位引用原文…', 'Locating the source passage…')}</span>
+          <button type="button" className="pdf-icon-button" aria-label={t('清除原文定位', 'Clear source location')} title={t('清除原文定位', 'Clear source location')} onClick={clearSourceHighlight}><X size={14} /></button>
+        </div>}
         {!!status && !passwordRequest && <div className="pdf-loading"><LoaderCircle size={25} className="pdf-spin" /><span>{status === 'opening' ? t('正在打开 PDF…', 'Opening PDF…') : status === 'unlocking' ? t('正在解锁 PDF…', 'Unlocking PDF…') : t('需要 PDF 密码', 'PDF password required')}</span></div>}
         {!!failure && <div className="pdf-loading pdf-error"><FileText size={30} /><strong>{t("暂时无法打开这份 PDF", "Unable to open this PDF")}</strong><p>{failure.cancelled ? t('已取消打开加密 PDF。', 'Opening the encrypted PDF was cancelled.') : failure.name === 'InvalidPDFException' ? t('PDF 文件无效或已损坏。', 'The PDF file is invalid or corrupted.') : failure.name === 'MissingPDFException' ? t('找不到 PDF 文件。', 'The PDF file could not be found.') : failure.name === 'PasswordException' ? t('无法使用此密码打开 PDF。', 'This password could not open the PDF.') : failure.message}</p><button className="pdf-text-button" onClick={() => setAttempt(attempt + 1)}>{t("重新打开", "Try again")}</button></div>}
         {!sharedToolbar && annotationToolbar !== 'fixed' && annotationTools}

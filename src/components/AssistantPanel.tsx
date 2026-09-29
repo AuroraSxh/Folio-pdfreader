@@ -1,22 +1,26 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { Element } from 'hast';
 import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCheck, ChevronDown, Clipboard, Copy, FileText, FlaskConical, Highlighter, History, Lightbulb, LoaderCircle, MessageSquare, Mic, NotebookPen, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import type { ChatRequest, Settings, TextSelection, Workspace } from '../../shared/types';
 import { useI18n } from '../i18n';
 import { getSummaryPrompt } from '../../shared/prompts';
 import { findChatTurn } from '../../shared/chat-turns';
+import { citationURL, createCitationResolver, readableCitations, type CitationDocument, type SourceCitation } from '../../shared/citations';
+import { remarkSourceCitations } from './citation-markdown';
 import { PLATFORM } from '../platform';
 import { useVoiceConversation } from '../hooks/useVoiceConversation';
 import VoiceControls from './VoiceControls';
 import './ui-components.css';
+import './source-citations.css';
 
 type UiNotice = { zh: string; en: string; values?: Record<string, string | number> };
 interface Props {
   workspace: Workspace; settings: Settings; selection: TextSelection | null;
   onClearSelection: () => void; onWorkspace: (ws: Workspace) => void;
   onSettings: () => void; onError: (message: string) => void;
-  onNavigate: (docId: string, page: number) => void;
+  onNavigate: (docId: string, page: number, quote?: string) => void;
   focusRequest?: { workspaceId: string; nonce: number };
   panelControls?: ReactNode;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
@@ -61,25 +65,66 @@ export function createStreamAccumulator(
   };
 }
 
-const MARKDOWN_PLUGINS = [remarkGfm];
 const markdownURL = (url: string) => url.startsWith('folio-cite://') ? url : defaultUrlTransform(url);
-interface MarkdownProps { text: string; citationKey: string; onNavigate: (id: string, page: number) => void; onError: (message: string) => void }
-const MemoMarkdown = memo(function MemoMarkdown({ text, citationKey, onNavigate, onError }: MarkdownProps) {
+type SourceNavigate = (id: string, page: number, quote?: string) => void;
+interface MarkdownProps { text: string; citationKey: string; onNavigate: SourceNavigate; onError: (message: string) => void; interactive?: boolean }
+
+/** A block with several references asks which one, rather than guessing evidence. */
+function SourceBlock({ tag: Tag, children, sources, onNavigate }: { tag: 'p' | 'li'; children?: ReactNode; sources: SourceCitation[]; onNavigate: SourceNavigate }) {
   const { t } = useI18n();
-  const documents = useMemo(() => {
-    const byName = new Map<string, string>();
-    for (const [id, name, fileName] of JSON.parse(citationKey) as string[][]) for (const value of [name, fileName]) if (!byName.has(value)) byName.set(value, id);
-    return byName;
-  }, [citationKey]);
-  const withCitations = useMemo(() => text.replace(/\[([^\]\n]+?)\s+(?:p\.?\s*|第\s*)(\d+)(?:\s*页)?\]/gi, (original, name: string, page: string) => {
-    const id = documents.get(name.trim());
-    return id ? `[${name} p.${page}](folio-cite://${id}/${page})` : original;
-  }), [text, documents]);
+  const [choosing, setChoosing] = useState(false);
+  const go = (source: SourceCitation) => { setChoosing(false); onNavigate(source.documentId, source.page, source.quote); };
+  if (!sources.length) return <Tag>{children}</Tag>;
+  return <Tag className="fl-source-block" data-source-count={sources.length}
+    title={sources.length > 1 ? t('点击这段回答，选择要查看的原文', 'Click this passage to choose a source') : t('点击这段回答，查看原文', 'Click this passage to view its source')}
+    onClick={event => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.detail > 1 || window.getSelection()?.isCollapsed === false) return;
+      const target = event.target as HTMLElement;
+      if (target.closest('a, button, input, textarea, select, code, pre, .fl-source-choices') || target.closest('.fl-source-block') !== event.currentTarget) return;
+      if (sources.length === 1) go(sources[0]); else setChoosing(value => !value);
+    }}>
+    {children}
+    {choosing && <span className="fl-source-choices" role="group" aria-label={t('选择原文引用', 'Choose a source')} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setChoosing(false); } }}>
+      <span>{t('查看原文：', 'View source:')}</span>{sources.map(source => <button key={citationURL(source)} type="button" title={source.quote || source.name} onClick={() => go(source)}>{source.name} · p.{source.page}</button>)}
+      <button type="button" className="fl-source-choice-close" aria-label={t('收起原文选项', 'Close source choices')} onClick={() => setChoosing(false)}><X size={12} /></button>
+    </span>}
+  </Tag>;
+}
+
+function blockSources(node: Element | undefined, resolver: ReturnType<typeof createCitationResolver>): SourceCitation[] {
+  const found = new Map<string, SourceCitation>();
+  const visit = (current: Element, root = false) => {
+    // A nested paragraph/list has its own source action; do not attach its evidence to its parent.
+    if (!root && ['p', 'li', 'ul', 'ol', 'pre', 'code'].includes(current.tagName)) return;
+    if (current.tagName === 'a' && typeof current.properties.href === 'string') {
+      const citation = resolver.fromURL(current.properties.href);
+      if (citation) found.set(citationURL(citation), citation);
+    }
+    for (const child of current.children) if (child.type === 'element') visit(child);
+  };
+  if (node) visit(node, true);
+  return [...found.values()];
+}
+
+const MemoMarkdown = memo(function MemoMarkdown({ text, citationKey, onNavigate, onError, interactive = true }: MarkdownProps) {
+  const { t } = useI18n();
+  const resolver = useMemo(() => createCitationResolver(JSON.parse(citationKey) as CitationDocument[]), [citationKey]);
+  const plugins = useMemo(() => [remarkGfm, [remarkSourceCitations, resolver]] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['remarkPlugins']>, [resolver]);
   const components = useMemo<NonNullable<React.ComponentProps<typeof ReactMarkdown>['components']>>(() => ({
-    a: ({ href, children }) => <a href={href} onClick={event => { event.preventDefault(); if (!href) return; if (href.startsWith('folio-cite://')) { const match = href.match(/^folio-cite:\/\/([^/]+)\/(\d+)/); if (match) onNavigate(match[1], Number(match[2])); } else void window.folio.openExternal(href).catch(cause => onError(errorText(cause))); }}>{children}</a>,
+    a: ({ href, children }) => {
+      const citation = href ? resolver.fromURL(href) : undefined;
+      if (citation) return <button type="button" className="fl-source-citation" data-source-document={citation.documentId} data-source-page={citation.page} data-source-quote={citation.quote ? 'true' : 'false'}
+        aria-label={t('查看原文：{name}，第 {page} 页', 'View source: {name}, page {page}', { name: citation.name, page: citation.page })}
+        title={citation.quote ? `${citation.name} p.${citation.page}\n${citation.quote}` : t('查看引用页：{name} p.{page}', 'View cited page: {name} p.{page}', { name: citation.name, page: citation.page })}
+        onClick={event => { event.stopPropagation(); onNavigate(citation.documentId, citation.page, citation.quote); }}>{children}</button>;
+      if (href?.startsWith('folio-cite://')) return <span>{children}</span>;
+      return <a href={href} onClick={event => { event.preventDefault(); if (href) void window.folio.openExternal(href).catch(cause => onError(errorText(cause))); }}>{children}</a>;
+    },
+    p: ({ node, children }) => <SourceBlock tag="p" sources={interactive ? blockSources(node, resolver) : []} onNavigate={onNavigate}>{children}</SourceBlock>,
+    li: ({ node, children }) => <SourceBlock tag="li" sources={interactive ? blockSources(node, resolver) : []} onNavigate={onNavigate}>{children}</SourceBlock>,
     img: ({ alt }) => <span className="fl-markdown-image">{t("[图片：{alt}]", "[Image: {alt}]", { alt: alt || t("外部图片", "External image") })}</span>,
-  }), [onNavigate, onError, t]);
-  return <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS} urlTransform={markdownURL} components={components}>{withCitations}</ReactMarkdown>;
+  }), [onNavigate, onError, t, resolver, interactive]);
+  return <ReactMarkdown remarkPlugins={plugins} urlTransform={markdownURL} components={components}>{text}</ReactMarkdown>;
 });
 
 export default function AssistantPanel({ workspace, settings, selection, onClearSelection, onWorkspace, onSettings, onError, onNavigate, focusRequest, panelControls, dragHandleProps, voiceHost, voiceToggleRequest, onVoiceActiveChange }: Props) {
@@ -131,8 +176,8 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const conversation = workspace.conversations.find(item => item.id === workspace.activeConversationId) ?? workspace.conversations[0];
   const messages = conversation?.messages ?? [];
   // Page, zoom, annotation and layout updates do not invalidate Markdown.
-  const citationKey = JSON.stringify(workspace.documents.map(doc => [doc.id, doc.name, doc.fileName]));
-  const navigateCitation = useCallback((id: string, page: number) => currentRef.current.onNavigate(id, page), []);
+  const citationKey = JSON.stringify(workspace.documents.map(({ id, name, fileName, pageCount }) => ({ id, name, fileName, pageCount })));
+  const navigateCitation = useCallback((id: string, page: number, quote?: string) => currentRef.current.onNavigate(id, page, quote), []);
   const markdownError = useCallback((message: string) => currentRef.current.onError(message), []);
   const voice = useVoiceConversation({
     locale, speechSources: workspace.documents, enabled: PLATFORM === 'darwin' || PLATFORM === 'win32', toggleRequest: voiceToggleRequest, onActiveChange: onVoiceActiveChange,
@@ -346,7 +391,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     if (result) setNotice({ zh: "已导出：{path}", en: "Exported: {path}", values: { path: result.path } });
   });
   const addToNotes = (text: string) => { setNotes(previous => `${previous.trim()}${previous.trim() ? '\n\n---\n\n' : ''}${text}`); setNotesStatus('saving'); setNotice({ zh: "已加入个人笔记", en: "Added to personal notes" }); };
-  const copyText = async (text: string) => { try { await navigator.clipboard.writeText(text); setNotice({ zh: "已复制", en: "Copied" }); } catch (cause) { setError(errorText(cause)); } };
+  const copyText = async (text: string) => { try { await navigator.clipboard.writeText(readableCitations(text, workspace.documents)); setNotice({ zh: "已复制", en: "Copied" }); } catch (cause) { setError(errorText(cause)); } };
   const stopGeneration = () => {
     const activeRequest = requestRef.current;
     if (!activeRequest) return;

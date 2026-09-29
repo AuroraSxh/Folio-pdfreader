@@ -25,6 +25,18 @@ test('Markdown contains metadata, absolute PDF links, summaries, typed memories,
   assert.match(md, /<!-- folio:generated:start -->/);
 });
 
+test('export retains concise page citations while leaving stored evidence and user questions intact', () => {
+  const ws = workspace(), anchored = 'Supported answer [Main paper.pdf p.2 ｜ Evidence from the original source.]';
+  ws.summary!.content = anchored; ws.notes = anchored; ws.memories[0].body = anchored;
+  ws.conversations[0].messages.push({ id: 'answer', role: 'assistant', content: anchored, createdAt: 2 });
+  ws.conversations[0].messages[0].content = 'What does [Main paper.pdf p.1 | this notation] mean?';
+  const markdown = renderMarkdown(ws);
+  assert.equal((markdown.match(/Supported answer \[Main paper.pdf p.2\]/g) ?? []).length, 4);
+  assert(!markdown.includes('Evidence from the original source.'));
+  assert(markdown.includes('What does [Main paper.pdf p.1 | this notation] mean?'));
+  assert.equal(ws.summary!.content, anchored); assert.equal(ws.notes, anchored);
+});
+
 test('Markdown distinguishes legacy highlights, underlines and strikeouts without losing quoted text or comments',()=>{
   const ws=workspace(),original=ws.documents[0].annotations[0];
   ws.documents[0].annotations.push({...original,id:'underline',kind:'underline',text:'Underlined evidence',comment:'下划线备注'},{...original,id:'strikeout',kind:'strikeout',text:'Rejected claim',comment:'删除线备注'});

@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import type { ExportResult, Settings, Workspace } from '../shared/types';
 import { MEMORY_LABELS } from '../shared/types';
 import { translate, type Language } from '../shared/i18n';
+import { readableCitations } from '../shared/citations';
 import { safeFilename } from './store';
 
 const START = '<!-- folio:generated:start -->';
@@ -22,6 +23,7 @@ function iso(value: number): string { return new Date(Number.isFinite(value) ? v
 /** A stable generated region lets Obsidian edits outside that region survive all re-exports. */
 export function renderMarkdown(workspace: Workspace, firstReadOverride?: string, libraryPath?: string, language: Language = 'zh-CN'): string {
   const t = (zh: string, en: string, values?: Record<string, string | number>) => translate(language, zh, en, values);
+  const answerText = (text: string) => clean(readableCitations(text, workspace.documents));
   const memoryLabels = { finding: t(MEMORY_LABELS.finding, 'Findings'), interpretation: t(MEMORY_LABELS.interpretation, 'Interpretations'), question: t(MEMORY_LABELS.question, 'Open questions'), 'user-note': t(MEMORY_LABELS['user-note'], 'Personal interests'), 'cross-ref': t(MEMORY_LABELS['cross-ref'], 'Cross-paper links') };
   const fm = ['---', `article_id: ${scalar(workspace.id)}`, `title: ${scalar(workspace.title)}`];
   if (workspace.authors) fm.push(`authors: ${scalar(workspace.authors)}`);
@@ -41,8 +43,8 @@ export function renderMarkdown(workspace: Workspace, firstReadOverride?: string,
     }
     out.push('');
   }
-  if (workspace.summary?.content) out.push(t('## AI 总结', '## AI summary'), '', `> ${label(workspace.summary.provider)} / ${label(workspace.summary.model)} · ${iso(workspace.summary.createdAt)}`, '', clean(workspace.summary.content), '');
-  if (workspace.memoryIndex.trim()) out.push(t('## 记忆索引', '## Memory index'), '', clean(workspace.memoryIndex.trim()), '');
+  if (workspace.summary?.content) out.push(t('## AI 总结', '## AI summary'), '', `> ${label(workspace.summary.provider)} / ${label(workspace.summary.model)} · ${iso(workspace.summary.createdAt)}`, '', answerText(workspace.summary.content), '');
+  if (workspace.memoryIndex.trim()) out.push(t('## 记忆索引', '## Memory index'), '', answerText(workspace.memoryIndex.trim()), '');
   if (workspace.memories.length) {
     out.push(t('## 长期记忆', '## Long-term memories'), '');
     for (const type of ['finding', 'interpretation', 'question', 'cross-ref', 'user-note'] as const) {
@@ -50,12 +52,12 @@ export function renderMarkdown(workspace: Workspace, firstReadOverride?: string,
       if (!entries.length) continue;
       out.push(`### ${memoryLabels[type]}`, '');
       for (const entry of entries) {
-        out.push(`- **${label(entry.title)}**`, '', ...clean(entry.body).split('\n').map(line => `  ${line}`), '');
+        out.push(`- **${label(entry.title)}**`, '', ...answerText(entry.body).split('\n').map(line => `  ${line}`), '');
         if (entry.tags.length) out.push(`  ${t('主题：', 'Topics: ')}${entry.tags.map(label).join(' · ')}`, '');
       }
     }
   }
-  if (workspace.notes.trim()) out.push(t('## 我的笔记', '## My notes'), '', clean(workspace.notes.trim()), '');
+  if (workspace.notes.trim()) out.push(t('## 我的笔记', '## My notes'), '', answerText(workspace.notes.trim()), '');
   const annotated = workspace.documents.filter(doc => doc.annotations.length);
   if (annotated.length) {
     out.push(t('## PDF 标注', '## PDF annotations'), '');
@@ -73,7 +75,7 @@ export function renderMarkdown(workspace: Workspace, firstReadOverride?: string,
     out.push(t('## 阅读对话', '## Reading conversations'), '');
     for (const conversation of conversations) {
       out.push(`### ${clean(conversation.title).replace(/[\r\n]/g, ' ')}`, '');
-      for (const message of conversation.messages) out.push(`#### ${message.role === 'user' ? t('我', 'Me') : t('助手', 'Assistant')} · ${iso(message.createdAt)}${message.interrupted ? t('（已中断）', ' (interrupted)') : ''}`, '', clean(message.content), '');
+      for (const message of conversation.messages) out.push(`#### ${message.role === 'user' ? t('我', 'Me') : t('助手', 'Assistant')} · ${iso(message.createdAt)}${message.interrupted ? t('（已中断）', ' (interrupted)') : ''}`, '', message.role === 'assistant' ? answerText(message.content) : clean(message.content), '');
     }
   }
   out.push(t('_由 Pairleaf 导出。此标记区域由应用更新；可在区域之外自由添加笔记。_', '_Exported by Pairleaf. The app updates this marked region; add personal notes outside it to preserve them._'), '', END, '');

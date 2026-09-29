@@ -11,6 +11,7 @@ A desktop PDF reader for academic papers, previously called Folio. Keep a paper 
 - Read main and supplementary PDFs side by side or stacked, with independent scrolling and zoom.
 - Copy text, highlight, underline, strike through, and add comments. Undo edits and export annotated PDFs.
 - Ask DeepSeek or another supported AI provider to explain passages and help with reading notes.
+- Adjust interface text size independently of PDF zoom. Click a cited AI answer to find its source; exact excerpts are highlighted.
 - Talk to the AI using system speech, off by default. [Mac setup](docs/apple-voice.md#english-guide) · [Windows setup](docs/windows-voice.md#english-guide) (experimental; requires a compatible local speech engine).
 - Export notes to Obsidian or Markdown. Papers, annotations, and notes stay on your computer.
 - Switch between English and Chinese, and check GitHub for updates from the app.
@@ -21,8 +22,8 @@ A desktop PDF reader for academic papers, previously called Folio. Keep a paper 
 
 | Platform | Version | Download |
 | --- | --- | --- |
-| macOS 13+, Apple Silicon / Intel | 0.5.0 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-mac-universal.dmg) |
-| Windows 10 / 11, x64 | 0.5.0 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.0/Pairleaf-0.5.0-windows-x64-portable.exe) |
+| macOS 13+, Apple Silicon / Intel | 0.5.1 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-mac-universal.dmg) |
+| Windows 10 / 11, x64 | 0.5.1 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-windows-x64-portable.exe) |
 
 On Mac, quit Folio and drag Pairleaf into Applications. Check that your papers and settings are present before removing the old Folio.app; keep its data folders. The first renamed app does not replace Folio.app automatically. Later Pairleaf updates use the usual drag-and-replace. [Moving from Folio](docs/rename-pairleaf.md#english-guide)
 
@@ -34,6 +35,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
+| [0.5.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1) | Adjustable app text size; click cited AI answers to jump to the PDF and highlight a verified source excerpt. Older page-only citations still jump to the page. |
 | [0.5.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.0) | Renamed Folio to Pairleaf on Mac and Windows, keeping existing libraries and settings. Adds experimental local Windows speech recognition and reading voices. |
 | [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | Better mixed-language speech and scientific term pronunciation; shorter spoken citations, separate Chinese/English voices, and voice previews. Voice stays off until started. Includes a setup tutorial and deletion of individual question-and-answer exchanges. Windows installer and portable builds updated. |
 | [0.4.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.0) | Mac voice conversations using Apple speech recognition and system voices, with a shared text history and controls that stay available when the AI panel is hidden. |
@@ -58,6 +60,7 @@ npm test            # Unit tests
 npm run test:locale # Language and update UI checks
 npm run test:voice  # Voice UI checks with simulated speech and AI
 npm run test:chat-deletion # Delete-exchange UI and persistence checks
+npm run test:sources # App text size and PDF source highlighting
 npm run dist:dmg    # Universal Mac DMG; build on a Mac
 npm run dist:win    # Windows x64 installer and portable app
 ```

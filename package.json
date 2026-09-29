@@ -1,6 +1,6 @@
 {
   "name": "folio-paper-reader",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A local-first academic PDF workspace with side-by-side reading and an AI companion",
   "author": "Pairleaf",
   "private": true,
@@ -23,6 +23,7 @@
     "test:locale": "node scripts/e2e-locale.mjs",
     "test:voice": "node scripts/e2e-voice.mjs",
     "test:chat-deletion": "node scripts/e2e-chat-deletion.mjs",
+    "test:sources": "node scripts/e2e-source-navigation.mjs",
     "build:windows-speech": "node scripts/build-windows-speech.mjs",
     "test:windows-speech": "node native/windows-speech/Tests/run.mjs"
   },
@@ -53,7 +54,7 @@
     "appId": "com.folio.paperreader",
     "productName": "Pairleaf",
     "directories": {
-      "output": "release/v0.5.0"
+      "output": "release/v0.5.1"
     },
     "files": [
       "dist/**/*",
@@ -91,8 +92,8 @@
         }
       ],
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Pairleaf uses the microphone only when you start a voice conversation. \u70b9\u51fb\u5f00\u59cb\u8bed\u97f3\u5bf9\u8bdd\u540e\uff0cPairleaf \u624d\u4f1a\u4f7f\u7528\u9ea6\u514b\u98ce\u3002",
-        "NSSpeechRecognitionUsageDescription": "Pairleaf uses Apple speech recognition to turn your spoken questions into chat messages. Pairleaf \u4f7f\u7528 Apple \u8bed\u97f3\u8bc6\u522b\u5c06\u4f60\u7684\u63d0\u95ee\u8f6c\u6362\u4e3a\u5bf9\u8bdd\u6587\u5b57\u3002"
+        "NSMicrophoneUsageDescription": "Pairleaf uses the microphone only when you start a voice conversation. 点击开始语音对话后，Pairleaf 才会使用麦克风。",
+        "NSSpeechRecognitionUsageDescription": "Pairleaf uses Apple speech recognition to turn your spoken questions into chat messages. Pairleaf 使用 Apple 语音识别将你的提问转换为对话文字。"
       },
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
@@ -120,7 +121,7 @@
           "y": 290,
           "type": "file",
           "path": "build/INSTALL-mac.txt",
-          "name": "\u5b89\u88c5\u8bf4\u660e.txt"
+          "name": "安装说明.txt"
         }
       ]
     },

@@ -1,0 +1,14 @@
+.fl-source-block { cursor: pointer; border-radius: 5px; transition: background-color 120ms ease; }
+.fl-source-block:hover { background: color-mix(in srgb, var(--accent, #7c956f) 7%, transparent); }
+.fl-source-block code, .fl-source-block pre { cursor: text; }
+.fl-markdown .fl-source-citation {
+  display: inline; padding: 1px 4px; margin: 0 2px; border: 0; border-radius: 4px;
+  font: inherit; font-size: .88em; line-height: inherit; text-align: left; overflow-wrap: anywhere;
+  color: var(--accent, #7c956f); background: color-mix(in srgb, var(--accent, #7c956f) 12%, transparent); cursor: pointer;
+}
+.fl-markdown .fl-source-citation:hover { background: color-mix(in srgb, var(--accent, #7c956f) 22%, transparent); }
+.fl-source-citation:focus-visible, .fl-source-choices button:focus-visible { outline: 2px solid var(--accent, #7c956f); outline-offset: 2px; }
+.fl-source-choices { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 7px; padding: 8px; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 8px; cursor: default; font-size: .9em; }
+.fl-source-choices button { color: inherit; background: color-mix(in srgb, currentColor 7%, transparent); border: 0; border-radius: 4px; padding: 4px 6px; font: inherit; cursor: pointer; overflow-wrap: anywhere; max-width: 100%; text-align: left; }
+.fl-source-choices .fl-source-choice-close { margin-left: auto; display: inline-flex; }
+@media (prefers-reduced-motion: reduce) { .fl-source-block { transition: none; } }

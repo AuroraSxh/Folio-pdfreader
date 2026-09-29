@@ -1,0 +1,39 @@
+.pdf-pane .pdfViewer .page > .folio-source-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.pdf-pane .folio-source-mark {
+  position: absolute;
+  pointer-events: none;
+  background: rgb(250 197 66 / 43%);
+  box-shadow: 0 0 0 1px rgb(175 117 11 / 50%);
+  border-radius: 2px;
+}
+.pdf-pane.reading-dark .folio-source-mark {
+  background: rgb(254 209 81 / 47%);
+  box-shadow: 0 0 0 1px rgb(253 224 124 / 80%);
+}
+.pdf-source-feedback {
+  position: absolute;
+  z-index: 9;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 28px);
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--line, #d9dfd2);
+  border-radius: 12px;
+  color: var(--text, #34453a);
+  background: var(--panel, #fff);
+  box-shadow: 0 3px 18px rgb(27 42 31 / 14%);
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  line-height: 1.45;
+}
+.pdf-source-feedback > span { min-width: 0; overflow-wrap: anywhere; }
+.pdf-source-feedback .pdf-icon-button { flex-shrink: 0; }
