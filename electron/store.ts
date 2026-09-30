@@ -3,7 +3,7 @@ import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import JSZip from 'jszip';
-import { DEFAULT_VIEW, type Workspace, type PaperDocument, type DocumentIndex, type OutlineItem, type RemovedWorkspace, type DocumentEditHistory } from '../shared/types';
+import { DEFAULT_VIEW, type Workspace, type PaperDocument, type DocumentIndex, type OutlineItem, type RemovedWorkspace, type DocumentEditHistory, type PaneSwapExpected, type ViewState } from '../shared/types';
 import { findChatTurn } from '../shared/chat-turns';
 
 export async function atomicWrite(file: string, data: string | Uint8Array) {
@@ -23,6 +23,9 @@ const validId = (id: unknown): id is string => typeof id === 'string' && /^[a-zA
 const validChatId = (id: unknown): id is string => typeof id === 'string' && id.length > 0 && id.length <= 256 && !/[\x00-\x1f\x7f]/.test(id);
 const clone = <T>(x: T): T => structuredClone(x);
 const portablePdfName=(name:string)=>name===path.basename(name)&&!/[/\\:*?"<>|\x00-\x1f]/.test(name)&&!reservedFilename.test(name)&&/\.pdf$/i.test(name);
+function samePaneTopology(a:Workspace['layout'],b:Workspace['layout']) {
+  return a.split===b.split&&a.leftId===b.leftId&&a.rightId===b.rightId&&(a.direction??'vertical')===(b.direction??'vertical');
+}
 const removalFile = '.removal.json';
 interface RemovedRecord { workspace: Workspace; removedAt: number }
 type EditableFields = Partial<Pick<PaperDocument,'annotations'|'outline'|'outlineLoaded'>>;
@@ -58,6 +61,7 @@ export function validateWorkspace(value: unknown): asserts value is Workspace {
     || typeof w.notes !== 'string' || typeof w.memoryIndex !== 'string' || !w.layout
     || ![w.authors,w.journal,w.doi].every(x=>typeof x==='string') || !w.tags.every(x=>typeof x==='string')
     || ![w.createdAt,w.updatedAt,w.lastReadAt].every(Number.isFinite)) throw new Error('工作区文件格式无效');
+  if(w.titleStatus!==undefined&&!['pending','confirmed'].includes(w.titleStatus))throw new Error('文章名称确认状态无效');
   const validateOutline=(items:OutlineItem[],depth=0):boolean=>depth<=40&&items.every(item=>item&&typeof item.id==='string'&&typeof item.title==='string'&&Number.isInteger(item.page)&&item.page>=1&&Array.isArray(item.children)&&validateOutline(item.children,depth+1));
   const ids = new Set<string>();
   const filenames = new Set<string>();
@@ -77,6 +81,7 @@ export function validateWorkspace(value: unknown): asserts value is Workspace {
   if(!conversationIds.has(w.activeConversationId))throw new Error('当前对话不存在');
   for(const m of w.memories) if(!m||typeof m.id!=='string'||!m.id||!['finding','interpretation','question','user-note','cross-ref'].includes(m.type)||typeof m.title!=='string'||typeof m.body!=='string'||!Array.isArray(m.tags)||!m.tags.every(t=>typeof t==='string')||!['ai','user'].includes(m.source)||!Number.isFinite(m.createdAt)||(m.sourceTurnIds!==undefined&&(!Array.isArray(m.sourceTurnIds)||!m.sourceTurnIds.every(validChatId))))throw new Error('记忆数据无效');
   if(typeof w.layout.split!=='boolean'||typeof w.layout.leftId!=='string'||typeof w.layout.rightId!=='string'||!Number.isFinite(w.layout.ratio))throw new Error('阅读布局无效');
+  if(w.layout.paneRevision!==undefined&&(!Number.isSafeInteger(w.layout.paneRevision)||w.layout.paneRevision<0))throw new Error('阅读区域状态无效');
   if(w.layout.direction!==undefined&&!['vertical','horizontal'].includes(w.layout.direction))throw new Error('分割方向无效');
   if(w.layout.views)for(const [pane,value] of Object.entries(w.layout.views)){
     const v=value?.state;
@@ -245,11 +250,22 @@ export class LibraryStore {
   }
   async patch(id: string, patch: Partial<Workspace>) {
     return this.mutate(id, ws=>{
-      for(const key of ['title','authors','journal','doi','notes'] as const) if(typeof patch[key]==='string') ws[key]=patch[key]!;
+      if(Object.hasOwn(patch,'title')){
+        if(typeof patch.title!=='string'||!patch.title.trim())throw new Error('文章名称不能为空');
+        const title=patch.title.trim();
+        if(title.length>1000)throw new Error('文章名称过长，请限制在 1000 个字符以内');
+        if(/[\x00-\x1f\x7f]/.test(title))throw new Error('文章名称包含无效字符');
+        ws.title=title;ws.titleStatus='confirmed';
+      }
+      for(const key of ['authors','journal','doi','notes'] as const) if(typeof patch[key]==='string') ws[key]=patch[key]!;
       if(Array.isArray(patch.tags)) ws.tags=patch.tags.filter(t=>typeof t==='string').slice(0,100);
       if(typeof patch.favorite==='boolean') ws.favorite=patch.favorite;
       if(typeof patch.lastReadAt==='number' && Number.isFinite(patch.lastReadAt)) ws.lastReadAt=patch.lastReadAt;
-      if(patch.layout) {const {views: _views,...layout}=patch.layout;ws.layout={...ws.layout,...layout};}
+      if(patch.layout) {
+        const {views: _views,paneRevision:_revision,...layout}=patch.layout;
+        const previous=ws.layout;ws.layout={...previous,...layout};
+        if(!samePaneTopology(previous,ws.layout))ws.layout.paneRevision=(previous.paneRevision??0)+1;
+      }
       if(patch.activeConversationId && ws.conversations.some(c=>c.id===patch.activeConversationId)) ws.activeConversationId=patch.activeConversationId;
     });
   }
@@ -258,6 +274,7 @@ export class LibraryStore {
     if(!files.length) throw new Error('未找到 PDF 文件，请选择 PDF 或包含 PDF 的文件夹');
     files.sort((a,b)=>Number(/supp|support|补充/i.test(path.basename(a)))-Number(/supp|support|补充/i.test(path.basename(b))));
     const ws=newWorkspace(path.basename(files[0]).replace(/\.pdf$/i,''));
+    ws.titleStatus='pending';
     await this.insert(ws);
     try { return await this.addDocuments(ws.id,files); }
     catch (e) { await this.queue(async()=>{ this.workspaces.delete(ws.id); await fs.rm(path.join(this.root,ws.id),{recursive:true,force:true}); }); throw e; }
@@ -266,7 +283,7 @@ export class LibraryStore {
     const files = await resolvePdfs(paths);
     if(!files.length) throw new Error('未找到 PDF 文件');
     return this.queue(async()=>{
-      const ws=this.get(id), staged: string[]=[];
+      const ws=this.get(id), staged: string[]=[],previousLayout=clone(ws.layout);
       const digests = new Set<string>();
       for(const d of ws.documents) digests.add(createHash('sha256').update(await fs.readFile(this.documentPath(id,d.id))).digest('hex'));
       try {
@@ -282,6 +299,7 @@ export class LibraryStore {
         }
         ws.layout.leftId ||= ws.documents[0]?.id ?? ''; ws.layout.rightId ||= ws.documents[1]?.id ?? '';
         if(ws.documents.length>1 && ws.documents.length===staged.length) ws.layout.split=true;
+        if(!samePaneTopology(previousLayout,ws.layout))ws.layout.paneRevision=(previousLayout.paneRevision??0)+1;
         ws.updatedAt=Math.max(Date.now(),ws.updatedAt+1); await this.persist(ws); return clone(ws);
       } catch(e) { await Promise.all(staged.map(f=>fs.rm(f,{force:true}))); throw e; }
     });
@@ -300,6 +318,38 @@ export class LibraryStore {
       for(const key of ['annotations','outline','outlineLoaded'] as const)if(!isDeepStrictEqual(beforeDoc[key],doc[key])){Object.assign(before,{[key]:beforeDoc[key]});Object.assign(after,{[key]:doc[key]});}
       ws.updatedAt=Math.max(Date.now(),ws.updatedAt+1);await this.persist(ws);
       this.recordDocumentEdit(id,docId,before,after);return clone(ws);
+    });
+  }
+  async updateView(id:string,docId:string,pane:'left'|'right',view:ViewState,paneRevision?:number):Promise<Workspace> {
+    const input=clone(view);
+    return this.queue(async()=>{
+      if(pane!=='left'&&pane!=='right')throw new Error('无效阅读区域');
+      if(paneRevision!==undefined&&(!Number.isSafeInteger(paneRevision)||paneRevision<0))throw new Error('阅读区域状态无效');
+      const ws=this.get(id),doc=ws.documents.find(d=>d.id===docId);
+      if(!doc)throw new Error('PDF 已不存在');
+      const displayed=ws.layout[pane==='left'?'leftId':'rightId'];
+      // An old pane can finish its debounced save after a swap, including when
+      // both panes show the same document. It must not overwrite the new view.
+      if(paneRevision!==undefined&&(paneRevision!==(ws.layout.paneRevision??0)||displayed!==docId||(pane==='right'&&!ws.layout.split)))return ws;
+      doc.view=input;
+      if(displayed===docId)ws.layout.views={...ws.layout.views,[pane]:{documentId:docId,state:input}};
+      ws.updatedAt=Math.max(Date.now(),ws.updatedAt+1);await this.persist(ws);return clone(ws);
+    });
+  }
+  async swapPanes(id:string,expected:PaneSwapExpected):Promise<Workspace> {
+    const input=clone(expected);
+    return this.mutate(id,ws=>{
+      if(!input||!validId(input.leftId)||!validId(input.rightId)||(input.direction!==undefined&&!['vertical','horizontal'].includes(input.direction))||(input.paneRevision!==undefined&&(!Number.isSafeInteger(input.paneRevision)||input.paneRevision<0)))throw new Error('无效分栏交换请求');
+      const layout=ws.layout;
+      if(!layout.split)throw new Error('请先打开两栏 PDF');
+      if(layout.leftId!==input.leftId||layout.rightId!==input.rightId||(layout.direction??'vertical')!==(input.direction??'vertical')||(layout.paneRevision??0)!==(input.paneRevision??0))throw new Error('分栏已改变，请重新拖动');
+      const left=ws.documents.find(doc=>doc.id===layout.leftId),right=ws.documents.find(doc=>doc.id===layout.rightId);
+      if(!left||!right)throw new Error('PDF 已不存在');
+      const leftView=layout.views?.left?.documentId===left.id?layout.views.left.state:left.view;
+      const rightView=layout.views?.right?.documentId===right.id?layout.views.right.state:right.view;
+      ws.layout={...layout,leftId:right.id,rightId:left.id,paneRevision:(layout.paneRevision??0)+1,views:{
+        left:{documentId:right.id,state:clone(rightView)},right:{documentId:left.id,state:clone(leftView)},
+      }};
     });
   }
   async index(id:string,docId:string,index:DocumentIndex) {
@@ -322,12 +372,13 @@ export class LibraryStore {
   async detachDocument(id:string,docId:string) {
     // Keep detached originals under .removed so removing a workspace attachment is reversible.
     return this.queue(async()=>{
-      const ws=this.get(id),doc=ws.documents.find(d=>d.id===docId);if(!doc)throw new Error('PDF 不存在');
+      const ws=this.get(id),doc=ws.documents.find(d=>d.id===docId),previousLayout=clone(ws.layout);if(!doc)throw new Error('PDF 不存在');
       ws.documents=ws.documents.filter(d=>d.id!==docId);
       if(!ws.documents.some(d=>d.role==='main') && ws.documents[0])ws.documents[0].role='main';
       if(ws.layout.leftId===docId)ws.layout.leftId=ws.documents[0]?.id??'';
       if(ws.layout.rightId===docId)ws.layout.rightId=ws.documents.find(d=>d.id!==ws.layout.leftId)?.id??'';
       if(!ws.layout.rightId)ws.layout.split=false;
+      if(!samePaneTopology(previousLayout,ws.layout))ws.layout.paneRevision=(previousLayout.paneRevision??0)+1;
       const source=path.join(this.root,id,doc.fileName),dir=path.join(this.root,id,'.removed');
       await fs.mkdir(dir,{recursive:true});
       await fs.rename(source,path.join(dir,doc.fileName));

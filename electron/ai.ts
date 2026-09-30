@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { ChatEvent, ChatMessage, ChatRequest, Memory, MemoryType, ProviderConfig, Settings, Workspace } from '../shared/types';
-import { buildMemoryContext, buildReadingContext, getSummaryPrompt, getSystemPrompt, isDuplicateTitle, sanitizeData } from '../shared/prompts';
+import { buildMemoryContext, getSummaryPrompt, getSystemPrompt, isDuplicateTitle, sanitizeData } from '../shared/prompts';
 import { normalizeLanguage, translate, type Language } from '../shared/i18n';
+import { deepReading, readingBudget, smartReading } from './reading-pipeline';
+import { clearReadingCache, type ReadingReport } from '../shared/reading';
 
 export interface AIHost {
   getWorkspace(id: string): Workspace;
@@ -10,9 +12,11 @@ export interface AIHost {
   getDocumentPages(workspaceId: string, documentId: string): Promise<string[]>;
   mutateWorkspace(id: string, fn: (workspace: Workspace) => void): Promise<Workspace>;
   emit(event: ChatEvent): void;
+  getReadingCache?(workspaceId: string, key: string): Promise<string | undefined>;
+  setReadingCache?(workspaceId: string, key: string, text: string): Promise<void>;
 }
 export interface LLMMessage { role: 'system' | 'user' | 'assistant'; content: string }
-interface Completion { text: string; finishReason?: string }
+export interface Completion { text: string; finishReason?: string }
 
 function safeError(error: unknown, key = ''): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -222,6 +226,8 @@ export function createAIService(host: AIHost) {
     let partial = '';
     let saved = false;
     let warnings: string[] = [];
+    let reading: ReadingReport | undefined;
+    const mode = request.kind === 'summary' ? 'deep' : request.readingMode ?? 'smart';
     try {
       const origin = request.source === 'voice' ? { source: 'voice' as const } : {};
       const user: ChatMessage = { id: randomUUID(), role: 'user', content: request.prompt || getSummaryPrompt(language), createdAt: Date.now(), turnId, ...origin };
@@ -234,14 +240,26 @@ export function createAIService(host: AIHost) {
       emit({ ...base, type: 'status', text: t("正在读取所选 PDF 的页面文字…","Reading page text from the selected PDFs…"), workspace });
       const documents = await Promise.all(request.documentIds.map(async id => {
         const doc = workspace.documents.find(d => d.id === id)!;
-        return { id, name: doc.name, pages: await host.getDocumentPages(workspace.id, id) };
+        return { id, name: doc.name, pageCount: doc.pageCount, role: doc.role, outline: doc.outline, pages: await host.getDocumentPages(workspace.id, id) };
       }));
       signal.throwIfAborted();
-      const context = buildReadingContext(workspace, documents, settings.contextMaxChars, request.selection,language);
+      const prompt = request.prompt || getSummaryPrompt(language);
+      const budget = readingBudget(settings, config, prompt);
+      const priorQuestions = workspace.conversations.find(c => c.id === request.conversationId)!.messages.slice(0, -1).filter(m => m.role === 'user' && !m.interrupted).slice(-2).map(m => m.content.slice(0, 1_000));
+      const followup = prompt.length < 160 && /^(那|这|它|他|她|why\b|what about\b|how about\b|and\b|it\b|they\b|this\b|that\b)/i.test(prompt.trim());
+      const context = await (mode === 'deep' ? deepReading : smartReading)({
+        workspace, documents, config, language, prompt: mode === 'smart' && followup ? [prompt, priorQuestions.at(-1) ?? ''].join('\n') : prompt,
+        selection: request.selection, maxChars: budget.paper, signal, complete: streamCompletion,
+        progress: (text, report, progress) => { reading = structuredClone(report); emit({ ...base, type: 'status', text, reading, progress }); },
+        getCache: host.getReadingCache ? key => host.getReadingCache!(workspace.id, key) : undefined,
+        setCache: host.setReadingCache ? (key, text) => host.setReadingCache!(workspace.id, key, text) : undefined,
+      });
+      reading = mode === 'deep' && context.report.batches === 1 ? { ...context.report, documents: context.report.documents.map(doc => ({ ...doc, includedPages: [] })) } : context.report;
+      signal.throwIfAborted();
       warnings = context.warnings;
       if (!context.hasText) throw new Error(t("所选 PDF 没有可提取文字。请等待文档索引完成，或先对扫描件进行 OCR，再使用 AI 阅读。","The selected PDFs have no extractable text. Wait for indexing, or run OCR on scanned pages before using AI reading."));
       const memory = buildMemoryContext(workspace, host.listWorkspaces());
-      const memoryLimit = Math.max(2000, Math.floor(settings.contextMaxChars / 4));
+      const memoryLimit = budget.memory;
       let memoryContext = memory;
       if (memory.length > memoryLimit) {
         // Wrap truncated data anew so no structural boundary is left open.
@@ -251,7 +269,7 @@ export function createAIService(host: AIHost) {
       const prior = workspace.conversations.find(c => c.id === request.conversationId)!.messages.slice(0, -1).filter(m => !m.interrupted);
       const history: LLMMessage[] = [];
       let historySize = 0;
-      const historyLimit = Math.max(4000, Math.floor(settings.contextMaxChars / 2));
+      const historyLimit = budget.history;
       for (let i = prior.length - 1; i >= 0; i--) {
         const item = prior[i];
         if (historySize + item.content.length > historyLimit) break;
@@ -260,25 +278,34 @@ export function createAIService(host: AIHost) {
       // Anthropic conversations must begin with a user turn.
       while (history[0]?.role === 'assistant') history.shift();
       if (history.length < prior.length) warnings.push(t('本次仅附带最近 {count} 条对话，较早对话未发送。','Only the latest {count} conversation messages are included; earlier messages were not sent.',{count:history.length}));
-      const instruction = getSystemPrompt(request.kind === 'summary' ? 'summary' : request.selection ? 'selection' : 'chat',language) + (request.source === 'voice' ? '\n\n' + t(
+      const sourceNotice = context.strategy === 'overview'
+        ? t('检索未找到明确匹配：以下仅为开头/结尾导览片段。不要把它们当成问题的证据，也不能据此声称全文没有相关内容；证据不足时明确说明并建议具体术语、图号或页码。', 'No clear retrieval match was found. These are opening/closing overview excerpts, not evidence for the question. They do not establish that the full paper lacks the requested information. Explain the evidence gap and suggest a specific term, figure or page.')
+        : mode === 'smart' && context.strategy === 'full' && !context.report.complete
+          ? t('本次包含用户选中的文字与已索引的可用资料，选段所在页的完整文字尚不可用。只分析实际提供的资料，不得声称已阅读或总结整篇论文。', 'The references include the selected passage and any available indexed material; the full text of the selected page is not ready. Analyze only what is supplied, without claiming to have read or summarized the whole paper.')
+        : context.strategy === 'retrieval'
+          ? t('以下是根据问题从全文中检索的片段，不是完整论文；没有出现在片段中的内容不能被判定为全文未报告。', 'These are passages retrieved for the question, not the entire paper. Information absent from these excerpts cannot be declared absent from the full paper.')
+          : t('以下覆盖所选 PDF 的全部可提取文字；空白/扫描页及无法提取的图像细节不在覆盖范围内。', 'The references cover all extractable text from the selected PDFs; blank/scanned pages and unextracted image details are not covered.');
+      const instruction = getSystemPrompt(request.kind === 'summary' ? 'summary' : request.selection ? 'selection' : 'chat',language) + (mode === 'deep' ? '\n\n' + t('参考数据包含所选 PDF 的完整可提取文字，或逐批阅读这些文字得到的证据笔记。根据它们综合回答，保留确切来源页码与原文引用；不可把不可读取的扫描页或图像当成已阅读。', 'The reference data contains all extractable text from the selected PDFs, or evidence notes produced by reading every batch. Synthesize an answer with precise source pages and verbatim quotes. Unreadable scanned pages and images have not been read.') : '') + (request.source === 'voice' ? '\n\n' + t(
         '当前为语音对话，你的回答将原样显示并朗读。请用适合口头交流的简洁段落回答，保留准确的术语与必要的文献页码引用；用户要求详解时再展开。不要输出额外的朗读稿或朗读指令。',
         'This is a voice conversation. Your answer will be displayed and read aloud. Use concise conversational paragraphs, retaining precise terminology and necessary page citations. Expand when the user asks for detail. Do not provide a separate speech script or playback instructions.'
       ) : '');
       const messages: LLMMessage[] = [
         { role: 'system', content: instruction },
-        { role: 'user', content: `${context.content}\n\n${memoryContext}\n\n${t('以上为本次阅读的参考数据。','The content above is reference data for this reading session.')}` },
+        { role: 'user', content: `${context.content}\n\n${memoryContext}\n\n${sourceNotice}\n${t('以上为本次阅读的参考数据。','The content above is reference data for this reading session.')}` },
         ...history,
         { role: 'user', content: request.prompt || getSummaryPrompt(language) },
       ];
-      emit({ ...base, type: 'status', text: warnings.length ? warnings.join('\n') : t("正在生成回答…","Generating an answer…") });
+      emit({ ...base, type: 'status', text: warnings.length ? warnings.join('\n') : t("正在生成回答…","Generating an answer…"), reading });
       const result = await streamCompletion(config, messages, signal, delta => { partial += delta; emit({ ...base, type: 'delta', text: delta }); },240_000,language);
       signal.throwIfAborted();
+      if (mode === 'deep' && ['length', 'max_tokens'].includes(result.finishReason ?? '')) throw new Error(t('精读最终回答达到输出上限，已保留部分内容，原完整摘要未被替换。请提高最大输出 token 后重试。', 'The full-reading response reached the output limit. Partial text was saved and your existing complete summary was kept. Increase the output token limit and retry.'));
+      if (mode === 'deep' && reading) { reading = { ...context.report, complete: true }; emit({ ...base, type: 'status', text: t('精读完成，正在保存结果…', 'Full reading complete. Saving the result…'), reading, progress: { phase: 'synthesizing', completed: 1, total: 1, cached: reading.cachedBatches } }); }
       if (['length', 'max_tokens'].includes(result.finishReason || '')) warnings.push(t("达到最大输出 token，回答可能尚未完整；可提高上限后继续提问。","The output token limit was reached and the answer may be incomplete. Increase the limit to continue."));
       const content = result.text + (warnings.length ? `\n\n> ${t('上下文与输出说明：','Context and output notes: ')}${warnings.join(' ')}` : '');
       workspace = await host.mutateWorkspace(workspace.id, ws => {
         signal.throwIfAborted();
-        ws.conversations.find(c => c.id === request.conversationId)!.messages.push({ id: randomUUID(), role: 'assistant', content, createdAt: Date.now(), provider: config.id, model: config.model, turnId, ...origin });
-        if (request.kind === 'summary') ws.summary = { content, provider: config.id, model: config.model, createdAt: Date.now(), sourceTurnId:turnId };
+        ws.conversations.find(c => c.id === request.conversationId)!.messages.push({ id: randomUUID(), role: 'assistant', content, createdAt: Date.now(), provider: config.id, model: config.model, turnId, reading, ...origin });
+        if (request.kind === 'summary') ws.summary = { content, provider: config.id, model: config.model, createdAt: Date.now(), sourceTurnId:turnId, reading };
       });
       saved = true;
       if (settings.autoMemory) {
@@ -291,10 +318,12 @@ export function createAIService(host: AIHost) {
       emit({ ...base, type: 'done', workspace: host.getWorkspace(workspace.id) });
     } catch (error) {
       let workspace: Workspace | undefined;
+      if (!partial && !saved && mode === 'deep' && reading?.documents.some(doc => doc.includedPages.length)) partial = t('整篇精读尚未完成，已完成的批次可在重试时复用。', 'Full reading has not finished. Completed batches can be reused when you retry.');
+      if (reading && !saved && mode === 'deep') reading = { ...reading, complete: false };
       if (partial && !saved) {
         try {
           workspace = await host.mutateWorkspace(request.workspaceId, ws => {
-            ws.conversations.find(c => c.id === request.conversationId)?.messages.push({ id: randomUUID(), role: 'assistant', content: partial + t('\n\n> 回答已中断，以上为部分内容。','\n\n> The response was interrupted; the text above is incomplete.'), createdAt: Date.now(), provider: config.id, model: config.model, interrupted: true, turnId, ...(request.source === 'voice' ? {source:'voice' as const} : {}) });
+            ws.conversations.find(c => c.id === request.conversationId)?.messages.push({ id: randomUUID(), role: 'assistant', content: partial + t('\n\n> 回答已中断，以上为部分内容。','\n\n> The response was interrupted; the text above is incomplete.'), createdAt: Date.now(), provider: config.id, model: config.model, interrupted: true, turnId, reading, ...(request.source === 'voice' ? {source:'voice' as const} : {}) });
           });
         } catch { /* A workspace may have been deleted during cancellation. */ }
       }
@@ -317,12 +346,15 @@ export function createAIService(host: AIHost) {
       if ([...active.values()].some(item => item.workspaceId === workspace.id)) throw new Error(t("此论文已有生成任务，请等待完成或先停止。","This paper already has a generation in progress. Wait for it to finish or stop it first."));
       if (!workspace.conversations.some(c => c.id === request.conversationId)) throw new Error(t("会话不存在，请重新打开论文。","The conversation does not exist. Reopen the paper."));
       if (request.kind !== 'chat' && request.kind !== 'summary') throw new Error(t("请求类型无效。","Invalid request type."));
+      if (request.readingMode !== undefined && !['smart','deep'].includes(request.readingMode)) throw new Error(t('阅读方式无效。','Invalid reading mode.'));
+      if (request.prompt.length > 40_000) throw new Error(t('问题过长，请缩短后重试。','The question is too long. Shorten it and retry.'));
       if (request.source !== undefined && request.source !== 'voice') throw new Error(t("输入来源无效。","Invalid input source."));
       if (request.voiceLocale !== undefined && (request.source !== 'voice' || !['zh-CN','en-US'].includes(request.voiceLocale))) throw new Error(t("语音语言无效。","Invalid voice language."));
       if (request.kind === 'chat' && !request.prompt.trim()) throw new Error(t("请输入问题。","Enter a question."));
       if (!request.documentIds.length || request.documentIds.some(id => !workspace.documents.some(d => d.id === id))) throw new Error(t("请选择此论文工作区中的 PDF。","Select PDFs from this paper’s workspace."));
       if (request.selection && (!request.documentIds.includes(request.selection.documentId) || !Number.isInteger(request.selection.page) || request.selection.page < 1)) throw new Error(t("选段不属于所选 PDF，或页码无效。","The passage is not from a selected PDF, or its page number is invalid."));
-      const indexing = workspace.documents.filter(doc => request.documentIds.includes(doc.id) && !doc.textStatus && !(request.selection?.documentId === doc.id && request.selection.text.trim()));
+      const focusedSelection = request.kind === 'chat' && request.readingMode !== 'deep';
+      const indexing = workspace.documents.filter(doc => request.documentIds.includes(doc.id) && !doc.textStatus && !(focusedSelection && request.selection?.documentId === doc.id && request.selection.text.trim()));
       if (indexing.length) throw new Error(t('所选 PDF 的文字索引尚未完成：{names}。请等待索引完成后重试；加密 PDF 请先打开并输入密码。','Text indexing is not complete for: {names}. Wait for indexing and retry; open encrypted PDFs and enter their password first.',{names:indexing.map(doc=>doc.name).join(language==='en'?', ':'、')}));
       const config = settings.providers[settings.activeProvider];
       if (!config?.apiKey?.trim()) throw new Error(t("请先在设置中输入 API Key。","Enter an API key in Settings first."));
@@ -359,6 +391,6 @@ export function createAIService(host: AIHost) {
       await Promise.allSettled(jobs.map(job => job.task));
     },
     drain,
-    async dispose() { disposed = true; for (const item of active.values()) item.controller.abort(); await drain(); },
+    async dispose() { disposed = true; for (const item of active.values()) item.controller.abort(); await drain(); clearReadingCache(); },
   };
 }

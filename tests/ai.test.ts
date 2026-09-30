@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { once } from 'node:events';
+import type { ServerResponse } from 'node:http';
+import { mock } from './mock-http-stream';
 import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -17,16 +17,6 @@ function workspace(): Workspace {
 function settings(baseURL: string): Settings {
   const make = (id: ProviderConfig['id']): ProviderConfig => ({ id, apiKey: 'test-key', baseURL, model: 'deepseek-flash', maxTokens: 4096, thinking: true, reasoningEffort: 'high' });
   return { language:'zh-CN', autoCheckUpdates:true, activeProvider: 'deepseek', providers: { deepseek: make('deepseek'), openai: make('openai'), anthropic: make('anthropic'), custom: make('custom') }, libraryPath: '/tmp/library', vaultPath: '', obsidianSubfolder: '', autoSummary: false, autoMemory: false, contextMaxChars: 12000, theme: 'light', readingTheme: 'white', annotationToolbar: 'floating' };
-}
-async function mock(handler: (body: any, response: ServerResponse, request: IncomingMessage) => void | Promise<void>) {
-  const server = createServer(async (request, response) => {
-    let raw = ''; for await (const chunk of request) raw += chunk;
-    try { await handler(JSON.parse(raw), response, request); }
-    catch (error) { response.statusCode = 500; response.end(String(error)); }
-  });
-  server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  const address = server.address() as { port: number };
-  return { url: `http://127.0.0.1:${address.port}`, close: () => { server.closeAllConnections(); server.close(); } };
 }
 function frame(payload: unknown) { return `data: ${JSON.stringify(payload)}\r\n\r\n`; }
 function answer(response: ServerResponse, text: string) {
@@ -280,7 +270,7 @@ test('no text prevents remote summary request and errors clearly', async t => {
 
 test('unindexed selected PDFs reject before any conversation write; explicit selection permits focused reading', async t => {
   let calls = 0;
-  const server = await mock((body, response) => { calls++; assert.match(JSON.stringify(body.messages), /Explicit selected evidence/); answer(response, 'Selection answer'); }); t.after(server.close);
+  const server = await mock((body, response) => { calls++; assert.match(JSON.stringify(body.messages), /Explicit selected evidence/); assert.match(JSON.stringify(body.messages), /完整文字尚不可用/); assert.doesNotMatch(JSON.stringify(body.messages), /以下覆盖所选 PDF 的全部/); answer(response, 'Selection answer'); }); t.after(server.close);
   const initial = workspace(); delete initial.documents[0].textStatus;
   const h = harness(settings(server.url), initial, { main: [], sup: ['Supplement text'] }); t.after(() => h.service.dispose());
   await assert.rejects(() => h.service.start(request()), /文字索引尚未完成.*Main.pdf/);
@@ -394,7 +384,8 @@ test('English AI summary, memory and index requests preserve existing Chinese da
   const h = harness(config, initial, { main: ['正文原始内容', '第二页'], sup: ['补充证据'] }); t.after(() => h.service.dispose());
   await h.service.start({ ...request(), kind: 'summary', prompt: '' }); assert.equal((await h.terminal()).type, 'done');
   assert.equal(bodies.length, 3);
-  assert.equal(bodies[0].messages[0].content, getSystemPrompt('summary', 'en'));
+  assert.ok(bodies[0].messages[0].content.startsWith(getSystemPrompt('summary', 'en')));
+  assert.match(bodies[0].messages[0].content, /reading every batch/);
   assert.equal(bodies[0].messages.at(-1).content, getSummaryPrompt('en'));
   assert.match(bodies[0].messages[1].content, /正文原始内容/); assert.match(bodies[0].messages[1].content, /保留我的中文笔记/);
   assert.equal(bodies[1].messages[0].content, getSystemPrompt('memory', 'en'));

@@ -22,8 +22,8 @@ A desktop PDF reader for academic papers, previously called Folio. Keep a paper 
 
 | Platform | Version | Download |
 | --- | --- | --- |
-| macOS 13+, Apple Silicon / Intel | 0.5.1 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-mac-universal.dmg) |
-| Windows 10 / 11, x64 | 0.5.1 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-windows-x64-portable.exe) |
+| macOS 13+, Apple Silicon / Intel | 0.6.0 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-mac-universal.dmg) |
+| Windows 10 / 11, x64 | 0.6.0 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-windows-x64-portable.exe) |
 
 On Mac, quit Folio and drag Pairleaf into Applications. Check that your papers and settings are present before removing the old Folio.app; keep its data folders. The first renamed app does not replace Folio.app automatically. Later Pairleaf updates use the usual drag-and-replace. [Moving from Folio](docs/rename-pairleaf.md#english-guide)
 
@@ -35,6 +35,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
+| [0.6.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.6.0) | Drag PDF tabs to swap panes while keeping reading positions; locally detect an imported paper’s title for confirmation. Adds full-text retrieval for Smart Q&A and batch-based Full-paper reading with progress, source coverage and reusable evidence notes. |
 | [0.5.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1) | Adjustable app text size; click cited AI answers to jump to the PDF and highlight a verified source excerpt. Older page-only citations still jump to the page. |
 | [0.5.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.0) | Renamed Folio to Pairleaf on Mac and Windows, keeping existing libraries and settings. Adds experimental local Windows speech recognition and reading voices. |
 | [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | Better mixed-language speech and scientific term pronunciation; shorter spoken citations, separate Chinese/English voices, and voice previews. Voice stays off until started. Includes a setup tutorial and deletion of individual question-and-answer exchanges. Windows installer and portable builds updated. |

@@ -479,7 +479,11 @@ export default function PdfPane(props: PdfPaneProps) {
     let loadingTask: PDFDocumentLoadingTask | undefined;
     const abortController = new AbortController();
     const initial = latest.current.document.view;
-    const patchThisDocument = latest.current.onDocumentPatch;
+    // This mounted viewer can move between panes. Capture the current route
+    // for each save, so pending requests retain their original pane revision.
+    const originalPatch = latest.current.onDocumentPatch;
+    const currentPatch = () => latest.current.workspaceId === workspaceId && latest.current.document.id === paper.id
+      ? latest.current.onDocumentPatch : originalPatch;
     const eventBus = new EventBus();
     const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK, externalLinkRel: 'noopener noreferrer', ignoreDestinationZoom: true });
     const findController = new PDFFindController({ eventBus, linkService });
@@ -495,7 +499,8 @@ export default function PdfPane(props: PdfPaneProps) {
     let lastViewKey = JSON.stringify(initial);
     const viewWrites = new Set<Promise<void>>();
     const saveView = (view: ViewState) => {
-      const request = Promise.resolve().then(() => patchThisDocument({ view })).catch(error => {
+      const patchView = currentPatch();
+      const request = Promise.resolve().then(() => patchView({ view })).catch(error => {
         if (!disposed && !viewPending.current) viewPending.current = view;
         throw error;
       });
@@ -634,7 +639,7 @@ export default function PdfPane(props: PdfPaneProps) {
       clearTimeout(saveTimer.current);
       clearTimeout(resizeTimer);
       if (pinchFrame) cancelAnimationFrame(pinchFrame);
-      if (viewPending.current) { submitPatch(patchThisDocument, { view: viewPending.current }); viewPending.current = null; }
+      if (viewPending.current) { submitPatch(currentPatch(), { view: viewPending.current }); viewPending.current = null; }
       resize.disconnect();
       abortController.abort();
       sourceLocation.current?.layer?.remove();

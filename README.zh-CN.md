@@ -22,8 +22,8 @@ Pairleaf（原名 Folio）是一个学术 PDF 阅读器，支持 macOS 和 Windo
 
 | 平台 | 版本 | 下载 |
 | --- | --- | --- |
-| macOS 13+，Apple Silicon / Intel | 0.5.1 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-mac-universal.dmg) |
-| Windows 10 / 11，x64 | 0.5.1 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.5.1/Pairleaf-0.5.1-windows-x64-portable.exe) |
+| macOS 13+，Apple Silicon / Intel | 0.6.0 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-mac-universal.dmg) |
+| Windows 10 / 11，x64 | 0.6.0 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-windows-x64-portable.exe) |
 
 Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文和设置都在后，可移除旧 Folio.app，但请保留数据目录。首次更名不会自动替换 Folio.app；以后更新 Pairleaf 才是常规拖入替换。[更名与迁移说明](docs/rename-pairleaf.md#中文说明)
 
@@ -35,6 +35,7 @@ Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文
 
 | 版本 | 主要变化 |
 | --- | --- |
+| [0.6.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.6.0) | 拖动 PDF 标签交换两栏，保留各自阅读位置；导入时识别文章名称，核对后确认。新增「智能问答」全文检索与「整篇精读」分批阅读，显示进度、来源范围并复用已读笔记。 |
 | [0.5.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1) | 可调整软件文字大小；点击带引用的 AI 回答，跳转到 PDF 并高亮核对成功的原文片段。旧回答只有页码时仍可跳页。 |
 | [0.5.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.0) | Mac 与 Windows 同步更名 Pairleaf，沿用原论文库和设置；Windows 增加实验性的本地系统语音识别与朗读。 |
 | [0.4.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.4.1) | 改进中英混读、实验术语读法及引用朗读；增加中英文独立音色与试听。语音默认关闭，附音色设置与使用教程；可删除单轮问答及关联自动记忆，同步更新 Windows 安装版和免安装版。 |

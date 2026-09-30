@@ -7,12 +7,14 @@ import { SettingsStore } from './settings';
 import { exportAnnotatedPdf } from './pdf-export';
 import { writeDemo } from './demo';
 import { createAIService } from './ai';
+import { ReadingCacheStore } from './reading-cache';
+import { clearReadingCache } from '../shared/reading';
 import { createUpdateService } from './updater';
 import { createVoiceService } from './voice';
 import type { UpdateService } from '../shared/updates';
 import { renderMarkdown, exportToObsidian } from './obsidian';
 import { isApplicationURL, pdfDialogOptions, pdfPathsFromArguments, sameLocalPath } from './desktop';
-import type { ChatRequest, DocumentIndex, PaperDocument, Settings, Workspace, ViewState } from '../shared/types';
+import type { ChatRequest, DocumentIndex, PaperDocument, Settings, Workspace, ViewState, PaneSwapExpected } from '../shared/types';
 import { translate } from '../shared/i18n';
 
 // Keep the legacy internal identity: Electron uses it for the macOS Safe
@@ -71,6 +73,14 @@ const legacyErrors:Record<string,string>={
   '阅读布局无效':'Invalid reading layout.',
   '分割方向无效':'Invalid split direction.',
   '阅读区域状态无效':'Invalid reading-pane state.',
+  '无效阅读区域':'Invalid reading pane.',
+  '无效分栏交换请求':'Invalid pane-swap request.',
+  '请先打开两栏 PDF':'Open a second PDF pane first.',
+  '分栏已改变，请重新拖动':'The panes have changed. Drag again to swap them.',
+  '文章名称确认状态无效':'Invalid paper-title confirmation state.',
+  '文章名称不能为空':'Enter a paper title.',
+  '文章名称过长，请限制在 1000 个字符以内':'Keep the paper title within 1,000 characters.',
+  '文章名称包含无效字符':'The paper title contains invalid characters.',
   '总结数据无效':'Invalid summary data.',
   '工作区 ID 不匹配':'Workspace ID does not match.',
   '找不到已移除的文章':'Removed paper not found.',
@@ -187,7 +197,7 @@ function registerIPC(){
     finally{await fs.rm(dir,{recursive:true,force:true});}
   });
   handle('update-workspace',(id:string,patch:Partial<Workspace>)=>library.patch(id,patch));
-  handle('delete-workspace',async(id:string)=>{await flushRenderer();await ai.cancelWorkspace(id);await library.moveToTrash(id);});
+  handle('delete-workspace',async(id:string)=>{await flushRenderer();await ai.cancelWorkspace(id);await library.moveToTrash(id);clearReadingCache(id);});
   handle('list-removed-workspaces',()=>library.listRemoved());
   handle('restore-workspace',(id:string)=>library.restoreRemoved(id));
   handle('purge-workspace',async(id:string)=>{
@@ -201,13 +211,8 @@ function registerIPC(){
   handle('undo-document-edit',(id:string,direction:'undo'|'redo')=>library.undoDocumentEdit(id,direction));
   handle('document-edit-history',(id:string)=>library.getDocumentEditHistory(id));
   handle('native-edit',(action:string)=>{if(action==='undo')window!.webContents.undo();else if(action==='redo')window!.webContents.redo();else throw new Error(t("无效编辑操作","Invalid editing action."));});
-  handle('update-view',(id:string,docId:string,pane:'left'|'right',view:ViewState)=>library.mutate(id,ws=>{
-    if(pane!=='left'&&pane!=='right')throw new Error(t("无效阅读区域","Invalid reading pane."));
-    const doc=ws.documents.find(d=>d.id===docId);if(!doc)throw new Error(t("PDF 已不存在","The PDF is no longer available."));
-    doc.view=view;
-    const displayed=ws.layout[pane==='left'?'leftId':'rightId'];
-    if(displayed===docId)ws.layout.views={...ws.layout.views,[pane]:{documentId:docId,state:view}};
-  }));
+  handle('update-view',(id:string,docId:string,pane:'left'|'right',view:ViewState,paneRevision?:number)=>library.updateView(id,docId,pane,view,paneRevision));
+  handle('swap-panes',(id:string,expected:PaneSwapExpected)=>library.swapPanes(id,expected));
   handle('remove-document',(id:string,doc:string)=>library.detachDocument(id,doc));
   handle('read-document',async(id:string,doc:string)=>new Uint8Array(await fs.readFile(library.documentPath(id,doc))));
   handle('index-document',(id:string,doc:string,index:DocumentIndex)=>library.index(id,doc,index));
@@ -315,7 +320,8 @@ async function createWindow(){
   window.webContents.session.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
   window.webContents.on('render-process-gone',(_event,details)=>{void stopVoice();void logEvent(`renderer-exit ${JSON.stringify(details)}`);});
   window.webContents.on('did-fail-load',(_event,code,description,url,isMainFrame)=>{if(isMainFrame)void logEvent(`page-load-failed ${code} ${description} ${url}`);});
-  window.once('ready-to-show',()=>window?.show());
+  // Isolated GUI tests can render through CDP without stealing the user's focus.
+  if(!(process.env.FOLIO_USER_DATA&&process.env.FOLIO_E2E_HIDE_WINDOW==='1'))window.once('ready-to-show',()=>window?.show());
   window.on('close',event=>{
     if(windowCanClose)return;event.preventDefault();
     void flushRenderer().then(async()=>{await stopVoice();await library.flush();windowCanClose=true;window?.close();}).catch(e=>{if(window)void dialog.showMessageBox(window,{type:'error',message:t("笔记尚未保存，窗口保持打开","Notes have not been saved; the window will remain open"),detail:localizeBackendError(e)});});
@@ -339,7 +345,8 @@ if(primaryInstance)void app.whenReady().then(async()=>{
   await logEvent(`starting Pairleaf ${app.getVersion()} / Electron ${process.versions.electron} / ${process.arch}`);
   const root=process.env.FOLIO_USER_DATA?path.join(app.getPath('userData'),'Library'):path.join(app.getPath('documents'),'Folio Library');
   settings=new SettingsStore(app.getPath('userData'),root);await settings.init();library=new LibraryStore(root);await library.init();
-  ai=createAIService({getWorkspace:id=>library.get(id),listWorkspaces:()=>library.list(),getSettings:()=>settings.get(),getDocumentPages:(id,doc)=>library.pages(id,doc),mutateWorkspace:(id,fn)=>library.mutate(id,fn),emit:event=>emit('chat',event)});
+  const readingCache=new ReadingCacheStore(root);
+  ai=createAIService({getReadingCache:(id,key)=>{library.get(id);return readingCache.get(id,key);},setReadingCache:(id,key,text)=>{library.get(id);return readingCache.set(id,key,text);},getWorkspace:id=>library.get(id),listWorkspaces:()=>library.list(),getSettings:()=>settings.get(),getDocumentPages:(id,doc)=>library.pages(id,doc),mutateWorkspace:(id,fn)=>library.mutate(id,fn),emit:event=>emit('chat',event)});
   initializeUpdater();
   powerMonitor.on('suspend',()=>{void stopVoice();});
   powerMonitor.on('lock-screen',()=>{void stopVoice();});

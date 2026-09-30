@@ -1,41 +1,43 @@
-Pairleaf 0.5.1（原 Folio）· Windows 10 / 11 x64
+Pairleaf 0.6.0（原 Folio）— Windows 10 / 11 x64
 
-中文
-安装版：运行 Pairleaf-0.5.1-windows-x64-setup.exe，按向导完成安装。
-免安装版：运行 Pairleaf-0.5.1-windows-x64-portable.exe，无需安装向导；首次启动会临时解包。
-更新前退出 Folio 或 Pairleaf。安装版按向导更新；免安装版改用新的 EXE。不要同时运行新旧版本编辑同一库。
-论文、笔记和设置保存在用户目录，保留原有数据；免安装不代表数据自动跟随 EXE。
-默认论文库仍是「文档/Folio Library」，设置仍在 %APPDATA%\Folio；这些旧名称有意保留，自定义库路径继续使用。请不要为了更名删除数据目录。
-AI 需要自行填写 API Key。离线阅读无需 Key，本包不包含密钥。
-提问或回答下的「删除」会移除本轮问答和关联自动记忆，保留个人笔记。旧版记忆如有残留，可在「记忆」中另行删除。
-Windows 系统语音为实验性功能，使用本机 System.Speech / SAPI 识别与朗读，无需额外语音 Key，不上传录音。转写文字与论文上下文仍会发送给所选 AI 服务。
-语音默认关闭，重启不会恢复。点击「语音」只打开选项，「开始聆听」才收音；试听无需 AI Key，也不收音、不写入聊天。
-需要兼容的本地识别引擎和音色；部分新版 Windows 11 没有可用的 SAPI 听写引擎，安装语言包不保证解决。讲述人的自然音色也不保证可供应用使用。
-识别不可用时可继续文字输入，有可用音色时仍能试听；不会自动转到云端识别。
-语音组件需要 .NET Framework 4.8 或兼容的 4.8.1，较新 Windows 通常已包含；安装版不内置 .NET 10 SDK，用户无需安装开发 SDK。
-本包未使用 Windows 代码签名证书；请从官方 GitHub Releases 下载。
-尚未经过 Windows 实机或虚拟机安装、收音、朗读和资源占用验证。Mac 上的交叉构建或模拟界面检查不能代替 Windows 实机测试。
+安装与更新
+安装版：运行 Pairleaf-0.6.0-windows-x64-setup.exe，按向导安装或更新。
+免安装版：运行 Pairleaf-0.6.0-windows-x64-portable.exe；首次启动会临时解包，无需安装向导。
+更新前退出 Pairleaf 或 Folio。安装版按向导更新；免安装版改用新的 EXE。不要同时运行新旧版本编辑同一论文库。
+免安装不代表数据自动跟随 EXE。论文和笔记默认仍在「文档/Folio Library」，设置仍在 %APPDATA%\Folio；自定义库路径不变。不要为更名删除数据目录。
+本包未使用 Windows 代码签名证书，请从官方 GitHub Releases 下载。
+
+阅读与 AI
+导入正文和补充 PDF，核对自动填入的文章名称后确认。拖动 PDF 顶部标签或手柄到另一栏，可交换左右或上下位置，各自的阅读状态保留。
+AI 需自行填写 API Key，离线阅读无需 Key；安装包不含个人密钥、论文或笔记。
+「智能问答」从所选文档的已提取全文中查找相关片段；「整篇精读」分批处理全部可提取文字，显示进度和范围，并复用本地证据笔记。
+整篇精读可以带问题开始，也可留空生成全文摘要，会增加模型调用次数、耗时与费用。智能问答有时也会增加一次检索词转换请求；语音对话使用智能问答。
+扫描件尚无 OCR；文字覆盖范围不代表 AI 看到了图片。无法提取文字的页面会提示，请结合原文核对答案。
+
+Windows 语音（实验性）
+默认关闭。点击「语音」只打开选项，「开始聆听」才收音；试听不需要 AI Key，也不收音、不写入聊天。
+使用本机 System.Speech / SAPI 识别与朗读，无需额外语音 Key，不上传录音。转写文字与论文上下文仍会发送给所选 AI 服务。
+需要兼容的本地识别引擎和音色；安装语言包不保证有可用的 SAPI 听写引擎，讲述人的自然音色也不一定可供应用使用。识别不可用时可继续文字输入，不会自动转到云端识别。
+语音组件需要 .NET Framework 4.8 或兼容的 4.8.1，较新 Windows 通常已包含；无需安装 .NET 开发 SDK。
+Windows 安装、收音、朗读和资源占用尚未实机或虚拟机测试。Mac 上的交叉构建和静态检查不代替 Windows 实测。
 
 English
-Installer: run Pairleaf-0.5.1-windows-x64-setup.exe and follow the wizard.
-Portable: run Pairleaf-0.5.1-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
-Quit Folio or Pairleaf before updating. Follow the installer, or use the new portable EXE. Do not run both versions against the same library.
-Papers, notes, and settings stay in your user folders. Portable does not mean the library travels with the EXE.
-The default library remains Documents/Folio Library, and settings stay in %APPDATA%\Folio. These names are intentional; custom library paths are preserved. Do not delete data folders because of the rename.
-AI requires your own API key. Offline reading does not. No key is bundled.
-Delete under a question or answer removes that exchange and linked automatic memories; personal notes are kept. Remove any older unlinked memories separately in Memory.
-Windows system speech is experimental. It uses local System.Speech / SAPI for recognition and reading, needs no extra speech key, and never uploads recordings. Transcripts and paper context still go to your selected AI provider.
-Voice is off by default and never resumes after restart. Voice opens options; Start listening uses the microphone. Preview needs no key, microphone, or chat entry.
-Compatible local engines and voices are required. Some newer Windows 11 systems lack a usable SAPI dictation engine; language downloads do not guarantee a fix. Narrator natural voices are not necessarily available to the app.
-If recognition is unavailable, continue typing; installed voices may still be previewed. There is no automatic cloud recognition fallback.
-The speech helper uses .NET Framework 4.8 or compatible 4.8.1, normally included with recent Windows. The app does not bundle the .NET 10 SDK; users do not need that development SDK.
-This build is unsigned. Download it from the official GitHub Releases page.
-Windows hardware/VM installation, microphone capture, playback, and resource use have not been tested. Cross-builds and simulated UI checks on Mac do not replace Windows device testing.
+Installer: run Pairleaf-0.6.0-windows-x64-setup.exe and follow the wizard.
+Portable: run Pairleaf-0.6.0-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
+Quit Pairleaf or Folio before updating. Follow the installer, or use the new portable EXE. Do not run both versions against one library.
+Portable does not mean your library travels with the EXE. Papers and notes remain in Documents/Folio Library by default; settings remain in %APPDATA%\Folio. Custom library paths are preserved. Do not delete data folders because of the rename.
+This build is unsigned; download it from the official GitHub Releases page.
 
-Downloads / 下载：https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1
-Voice guide / 语音教程：https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/windows-voice.md
-Migration / 更名说明：https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md
+Import the paper and supplements, then check and confirm the suggested title. Drag a PDF tab or grip onto the other pane to swap side-by-side or stacked views while keeping their reading state.
+AI requires your own API key; offline reading does not. No personal keys, papers, or notes are bundled. Smart Q&A retrieves passages throughout the selected documents. Full-paper reading processes all extractable text in batches, shows progress and coverage, and reuses evidence notes.
+Enter a question for Full-paper reading or leave it blank for a full summary. It makes more model calls and can take longer and cost more; Smart Q&A may make an extra query-expansion request. Voice conversations use Smart Q&A.
+OCR is not included, and text coverage does not imply image understanding. Pages without extractable text are reported; check answers against the paper.
 
-文字大小与原文定位 / Text size and sources
-在设置中选择软件文字大小（100%–150%），保存后生效，不改变 PDF 缩放。点击带引用的 AI 回答可定位原文；摘录核对成功时临时高亮，按 Esc 清除。旧回答只有页码时仍可跳页。
-Choose App text size (100%–150%) in Settings and save; PDF zoom is independent. Click a cited AI answer to jump to its source; verified excerpts receive a temporary highlight, cleared with Esc. Older page-only citations still jump to the cited page.
+Windows speech is experimental and off by default. Voice opens options; Start listening uses the microphone. Preview needs no key or microphone and does not add chat entries.
+It uses local System.Speech / SAPI and never uploads recordings. Transcripts and paper context still go to your selected AI provider. Compatible local engines and voices are required; language downloads do not guarantee a usable SAPI dictation engine. Narrator natural voices are not necessarily available to the app. If recognition is unavailable, continue typing; there is no automatic cloud fallback.
+The speech helper needs .NET Framework 4.8 or compatible 4.8.1, normally included with recent Windows; no development SDK is required.
+Windows hardware/VM installation, microphone capture, playback, and resource use remain untested. Cross-building and static checks on Mac do not replace Windows device testing.
+
+下载 / Downloads: https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.6.0
+语音教程 / Voice guide: https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/windows-voice.md
+更名说明 / Migration: https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md

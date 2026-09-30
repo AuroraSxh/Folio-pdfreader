@@ -1,3 +1,4 @@
+import type { ReadingMode, ReadingReport } from './reading';
 export type ProviderId = 'deepseek' | 'openai' | 'anthropic' | 'custom';
 export interface ProviderConfig { id: ProviderId; apiKey?: string; hasKey?: boolean; baseURL: string; model: string; maxTokens: number; thinking?: boolean; reasoningEffort?: 'low'|'high'|'max' }
 export interface Settings {
@@ -27,20 +28,23 @@ export interface PaperDocument {
 }
 export type MemoryType = 'finding' | 'interpretation' | 'question' | 'user-note' | 'cross-ref';
 export interface Memory { id: string; type: MemoryType; title: string; body: string; tags: string[]; createdAt: number; source: 'ai' | 'user'; sourceTurnIds?: string[] }
-export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice'; turnId?: string }
+export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice'; turnId?: string; reading?: ReadingReport }
 export interface Conversation { id: string; title: string; createdAt: number; messages: ChatMessage[] }
-export interface Summary { content: string; provider: string; model: string; createdAt: number; sourceTurnId?: string }
+export interface Summary { content: string; provider: string; model: string; createdAt: number; sourceTurnId?: string; reading?: ReadingReport }
+export interface PaneSwapExpected { leftId: string; rightId: string; direction?: 'vertical'|'horizontal'; paneRevision?: number }
 export interface Workspace {
   version: 1; id: string; title: string; authors: string; journal: string; doi: string; tags: string[];
+  /** New imports require an explicit title confirmation; absent in older libraries. */
+  titleStatus?: 'pending' | 'confirmed';
   favorite: boolean; createdAt: number; updatedAt: number; lastReadAt: number;
   documents: PaperDocument[]; notes: string; summary?: Summary; memories: Memory[]; memoryIndex: string;
   conversations: Conversation[]; activeConversationId: string;
-  layout: { split: boolean; direction?: 'vertical'|'horizontal'; leftId: string; rightId: string; ratio: number; views?: Partial<Record<'left'|'right',{documentId:string; state:ViewState}>> };
+  layout: { split: boolean; direction?: 'vertical'|'horizontal'; leftId: string; rightId: string; ratio: number; paneRevision?: number; views?: Partial<Record<'left'|'right',{documentId:string; state:ViewState}>> };
 }
 export interface TextSelection { documentId: string; documentName: string; page: number; text: string; rects: number[][] }
 export interface DocumentIndex { pageCount: number; outline: OutlineItem[]; title?: string; authors?: string; pages: string[] }
-export interface ChatRequest { requestId: string; workspaceId: string; conversationId: string; prompt: string; kind: 'chat' | 'summary'; documentIds: string[]; selection?: TextSelection; source?: 'voice'; voiceLocale?: 'zh-CN' | 'en-US' }
-export interface ChatEvent { requestId: string; workspaceId: string; type: 'delta' | 'done' | 'error' | 'memory' | 'status'; text?: string; workspace?: Workspace; interrupted?: boolean }
+export interface ChatRequest { requestId: string; workspaceId: string; conversationId: string; prompt: string; kind: 'chat' | 'summary'; documentIds: string[]; selection?: TextSelection; source?: 'voice'; voiceLocale?: 'zh-CN' | 'en-US'; readingMode?: ReadingMode }
+export interface ChatEvent { requestId: string; workspaceId: string; type: 'delta' | 'done' | 'error' | 'memory' | 'status'; text?: string; workspace?: Workspace; interrupted?: boolean; reading?: ReadingReport; progress?: { phase: 'searching'|'reading'|'synthesizing'; completed: number; total: number; cached?: number } }
 export interface ExportResult { path: string; overwritten?: boolean }
 export interface RemovedWorkspace { id: string; title: string; authors: string; tags: string[]; documentCount: number; removedAt: number }
 export interface DocumentEditHistory { canUndo: boolean; canRedo: boolean }
@@ -61,7 +65,8 @@ export interface FolioAPI {
   undoDocumentEdit(workspaceId: string, direction: 'undo'|'redo'): Promise<Workspace>;
   getDocumentEditHistory(workspaceId: string): Promise<DocumentEditHistory>;
   nativeEdit(action: 'undo'|'redo'): Promise<void>;
-  updateView(workspaceId:string,documentId:string,pane:'left'|'right',view:ViewState):Promise<Workspace>;
+  updateView(workspaceId:string,documentId:string,pane:'left'|'right',view:ViewState,paneRevision?:number):Promise<Workspace>;
+  swapPanes(workspaceId:string,expected:PaneSwapExpected):Promise<Workspace>;
   removeDocument(workspaceId: string, documentId: string): Promise<Workspace>;
   readDocument(workspaceId: string, documentId: string): Promise<Uint8Array>;
   indexDocument(workspaceId: string, documentId: string, index: DocumentIndex): Promise<Workspace>;

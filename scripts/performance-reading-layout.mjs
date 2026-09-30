@@ -123,6 +123,13 @@ try {
   const importStart = performance.now();
   await application.evaluate(({ dialog }, paths) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: paths }); }, files);
   await page.getByRole('button', { name: /^导入论文/ }).click();
+  const titleDialog = page.getByRole('dialog', { name: /^(确认文章名称|Confirm paper title)$/ });
+  await titleDialog.waitFor({ state: 'visible' });
+  await titleDialog.locator('.import-title-status .import-title-spin').waitFor({ state: 'detached' });
+  const suggestedTitle = (await titleDialog.getByRole('textbox', { name: /^(文章名称|Paper title)$/ }).inputValue()).replace(/\s+/g, ' ').trim();
+  assert(suggestedTitle, 'Imported performance fixture must have a nonempty title suggestion');
+  await titleDialog.getByRole('button', { name: /^(确认名称|Confirm title)$/ }).click();
+  await titleDialog.waitFor({ state: 'detached' });
   let workspace;
   const deadline = performance.now() + 35000;
   while (performance.now() < deadline) {
@@ -131,6 +138,9 @@ try {
     await delay(200);
   }
   assert(workspace?.documents.length === 2 && workspace.documents.every(doc => doc.textStatus === 'ready'), 'Both fixture indexes must be ready');
+  assert.equal(workspace.titleStatus, 'confirmed', 'The import title must be confirmed before reading measurements');
+  assert.equal(workspace.title, suggestedTitle);
+  report.importTitle = { suggested: suggestedTitle, confirmed: workspace.title };
   assert.deepEqual(workspace.documents.map(doc => doc.pageCount).sort((a, b) => a - b), [40, 100]);
   if (!workspace.layout.split) {
     await page.getByRole('button', { name: '阅读布局', exact: true }).click();

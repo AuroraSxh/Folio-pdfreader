@@ -2,8 +2,9 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Element } from 'hast';
-import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCheck, ChevronDown, Clipboard, Copy, FileText, FlaskConical, Highlighter, History, Lightbulb, LoaderCircle, MessageSquare, Mic, NotebookPen, Plus, RefreshCw, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
-import type { ChatRequest, Settings, TextSelection, Workspace } from '../../shared/types';
+import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCheck, ChevronDown, Clipboard, Copy, FileText, FlaskConical, Highlighter, History, Lightbulb, LoaderCircle, MessageSquare, Mic, NotebookPen, Plus, RefreshCw, Search, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import type { ChatEvent, ChatRequest, Settings, TextSelection, Workspace } from '../../shared/types';
+import type { ReadingReport } from '../../shared/reading';
 import { useI18n } from '../i18n';
 import { getSummaryPrompt } from '../../shared/prompts';
 import { findChatTurn } from '../../shared/chat-turns';
@@ -12,6 +13,8 @@ import { remarkSourceCitations } from './citation-markdown';
 import { PLATFORM } from '../platform';
 import { useVoiceConversation } from '../hooks/useVoiceConversation';
 import VoiceControls from './VoiceControls';
+import { ReadingCoverage, ReadingProgress } from './ReadingCoverage';
+import { resolveReadingRequest } from './readingRequest';
 import './ui-components.css';
 import './source-citations.css';
 
@@ -32,7 +35,7 @@ interface VoiceSubmission {
   locale: 'zh-CN' | 'en-US'; answer: (text: string) => void;
   completion: Promise<void>; resolve: () => void; reject: (error: Error) => void;
 }
-type Send = (promptText: string, kind?: ChatRequest['kind'], selectionOverride?: TextSelection | null, sourceOverride?: string[], voice?: VoiceSubmission) => Promise<void>;
+type Send = (promptText: string, kind?: ChatRequest['kind'], selectionOverride?: TextSelection | null, sourceOverride?: string[], voice?: VoiceSubmission, readingModeOverride?: ChatRequest['readingMode']) => Promise<void>;
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 
 /** Batch SSE tokens without an idle interval. A generation guard also rejects
@@ -139,6 +142,9 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const [tab, setTab] = useState<'chat' | 'notes' | 'memory'>('chat');
   const [input, setInput] = useState('');
   const [source, setSource] = useState('all');
+  const [readingMode, setReadingMode] = useState<'smart' | 'deep'>('smart');
+  const [readingReport, setReadingReport] = useState<ReadingReport>();
+  const [readingProgress, setReadingProgress] = useState<ChatEvent['progress']>();
   const [stream, setStream] = useState('');
   const [pendingPrompt, setPendingPrompt] = useState('');
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -282,6 +288,8 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     if (event.workspaceId !== currentRef.current.workspace.id) return;
     if (event.type === 'memory') { if (event.workspace) mergeSnapshot(event.workspace); return; }
     if (event.requestId !== requestRef.current?.requestId) return;
+    if (event.reading) setReadingReport(event.reading);
+    if (event.progress) setReadingProgress(event.progress);
     const voiceRequest = voiceRequestRef.current?.requestId === event.requestId ? voiceRequestRef.current : null;
     if (voiceRequest && !voiceRequest.answered && event.workspace && (event.type === 'status' || event.type === 'done')) {
       const answer = event.workspace.conversations.find(item => item.id === requestRef.current?.conversationId)?.messages.at(-1);
@@ -301,7 +309,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
       else streamAccumulator.flush();
       if (event.type === 'error') setError(event.text || currentRef.current.t("请求失败，请检查 API 设置后重试。", "Request failed. Check your API settings and try again."));
       if (event.interrupted) setNotice({ zh: "已停止生成", en: "Generation stopped" });
-      requestRef.current = null; setRequestId(null); setStatus('');
+      requestRef.current = null; setRequestId(null); setStatus(''); setReadingProgress(undefined);
       if (voiceRequest) {
         voiceRequestRef.current = null;
         if (event.type === 'error') voiceRequest.reject(new Error('[chat-failed]'));
@@ -311,20 +319,22 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     }
   }), [mergeSnapshot, streamAccumulator]);
 
-  const send: Send = useCallback(async (promptText: string, kind: ChatRequest['kind'] = 'chat', selectionOverride?: TextSelection | null, sourceOverride?: string[], voiceSubmission?: VoiceSubmission) => {
+  const send: Send = useCallback(async (promptText: string, kind: ChatRequest['kind'] = 'chat', selectionOverride?: TextSelection | null, sourceOverride?: string[], voiceSubmission?: VoiceSubmission, readingModeOverride?: ChatRequest['readingMode']) => {
     if (actionBusyRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
     if (!voiceSubmission && voice.controller.getState().active) await voice.controller.pause();
-    if (!promptText.trim() || requestRef.current || actionBusyRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
     const current = currentRef.current;
+    const resolved = resolveReadingRequest({ prompt: promptText, kind, mode: readingMode, override: readingModeOverride, voice: !!voiceSubmission, language: current.settings.language });
+    promptText = resolved.prompt; kind = resolved.kind;
+    if (!promptText.trim() || requestRef.current || actionBusyRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
     const active = current.settings.providers[current.settings.activeProvider];
     if (!active.hasKey && !active.apiKey) { setError(current.t("请先在设置中填写 API Key。", "Add your API key in Settings first.")); voiceSubmission?.reject(new Error('[missing-key]')); return; }
     const id = crypto.randomUUID();
-    const preliminary: ChatRequest = { requestId: id, workspaceId: current.workspace.id, conversationId: current.workspace.activeConversationId, prompt: promptText.trim(), kind, documentIds: sourceOverride ?? (source === 'all' ? current.workspace.documents.map(doc => doc.id) : [source]), selection: selectionOverride !== undefined ? selectionOverride ?? undefined : chosenSelection ?? undefined, ...(voiceSubmission ? { source: 'voice' as const, voiceLocale: voiceSubmission.locale } : {}) };
+    const preliminary: ChatRequest = { requestId: id, workspaceId: current.workspace.id, conversationId: current.workspace.activeConversationId, prompt: promptText.trim(), kind, readingMode: resolved.readingMode, documentIds: sourceOverride ?? (source === 'all' ? current.workspace.documents.map(doc => doc.id) : [source]), selection: selectionOverride !== undefined ? selectionOverride ?? undefined : chosenSelection ?? undefined, ...(voiceSubmission ? { source: 'voice' as const, voiceLocale: voiceSubmission.locale } : {}) };
     requestRef.current = preliminary; lastRequest.current = preliminary;
     if (voiceSubmission) voiceRequestRef.current = { ...voiceSubmission, requestId: id, answered: false, started: false };
     followStream.current = true;
     streamAccumulator.clear();
-    setRequestId(id); setPendingPrompt(promptText.trim()); setError(''); setNotice(null); setStatus({ zh: "正在准备论文上下文…", en: "Preparing paper context…" });
+    setRequestId(id); setPendingPrompt(promptText.trim()); setError(''); setNotice(null); setReadingReport(undefined); setReadingProgress(undefined); setStatus({ zh: "正在准备论文上下文…", en: "Preparing paper context…" });
     if (!voiceSubmission) { setInput(''); setTab('chat'); }
     try {
       await flushNotes();
@@ -335,9 +345,9 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
       await window.folio.startChat(preliminary);
     } catch (cause) {
       if (voiceRequestRef.current?.requestId === id) { voiceRequestRef.current.reject(new Error('[chat-failed]')); voiceRequestRef.current = null; }
-      if (mounted.current && requestRef.current === preliminary) { streamAccumulator.flush(); requestRef.current = null; setRequestId(null); setStatus(''); setError(errorText(cause)); }
+      if (mounted.current && requestRef.current === preliminary) { streamAccumulator.flush(); requestRef.current = null; setRequestId(null); setStatus(''); setReadingProgress(undefined); setError(errorText(cause)); }
     }
-  }, [source, chosenSelection, flushNotes, mergeSnapshot, streamAccumulator, voice.controller]);
+  }, [source, readingMode, chosenSelection, flushNotes, mergeSnapshot, streamAccumulator, voice.controller]);
   sendRef.current = send;
 
   useEffect(() => {
@@ -419,6 +429,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
         {messages.map(message => <article className={`fl-message ${message.role}`} key={message.id} data-message-id={message.id}>
           {message.role === 'assistant' && <div className="fl-message-author"><span><Sparkles size={12} /></span>Pairleaf <small>{message.model}</small></div>}
           <div className={message.role === 'assistant' ? 'fl-markdown' : 'fl-user-message'}>{message.source === 'voice' && <span className="fl-message-voice"><Mic size={10} />{t("语音", "Voice")}</span>}{message.role === 'assistant' ? md(message.content) : message.content}</div>
+          {message.role === 'assistant' && <ReadingCoverage report={message.reading} />}
           {message.interrupted && <span className="fl-interrupted">{t("已停止生成", "Generation stopped")}</span>}
           <div className="fl-message-actions">
             {message.role === 'assistant' && message.content && <><button title={t("复制回复", "Copy response")} onClick={() => void copyText(message.content)}><Copy size={12} /> {t("复制", "Copy")}</button><button title={t("添加到个人笔记", "Add to personal notes")} onClick={() => addToNotes(message.content)}><NotebookPen size={12} /> {t("存为笔记", "Save to notes")}</button></>}
@@ -426,12 +437,19 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
           </div>
         </article>)}
         {pendingPrompt && <article className="fl-message user"><div className="fl-user-message">{pendingPrompt}</div></article>}
-        {(requestId || stream) && <article className="fl-message assistant"><div className="fl-message-author"><span><Sparkles size={12} /></span>Pairleaf <small>{provider.model}</small></div>{stream ? <div className="fl-markdown fl-streaming">{md(stream)}</div> : <div className="fl-thinking"><span /><span /><span /><small>{(status ? typeof status === "string" ? status : t(status.zh, status.en, status.values) : t("正在思考…", "Thinking…"))}</small></div>}</article>}
-        {error && <div className="fl-inline-error" role="alert"><span>{error}</span>{!requestId && lastRequest.current && <button onClick={() => { const previous = lastRequest.current; if (previous) void send(previous.prompt, previous.kind, previous.selection, previous.documentIds); }}><RefreshCw size={12} /> {t("重试", "Retry")}</button>}</div>}
+        {(requestId || stream) && <article className="fl-message assistant"><div className="fl-message-author"><span><Sparkles size={12} /></span>Pairleaf <small>{provider.model}</small></div><ReadingProgress progress={readingProgress} />{stream ? <div className="fl-markdown fl-streaming">{md(stream)}</div> : <div className="fl-thinking"><span /><span /><span /><small>{(status ? typeof status === "string" ? status : t(status.zh, status.en, status.values) : t("正在思考…", "Thinking…"))}</small></div>}<ReadingCoverage report={readingReport} /></article>}
+        {error && <div className="fl-inline-error" role="alert"><span>{error}</span>{!requestId && lastRequest.current && <button onClick={() => { const previous = lastRequest.current; if (previous) void send(previous.prompt, previous.kind, previous.selection, previous.documentIds, undefined, previous.readingMode); }}><RefreshCw size={12} /> {t("重试", "Retry")}</button>}</div>}
       </div>
       <div className="fl-composer-area">
+        <div className="fl-reading-mode" role="group" aria-label={t('AI 阅读方式', 'AI reading mode')}>
+          <button type="button" aria-pressed={readingMode === 'smart'} disabled={!!requestId || actionBusy} onClick={() => setReadingMode('smart')}><Search size={12} />{t('智能问答', 'Smart Q&A')}</button>
+          <button type="button" aria-pressed={readingMode === 'deep'} disabled={!!requestId || actionBusy} onClick={() => setReadingMode('deep')}><BookOpen size={12} />{t('整篇精读', 'Full-paper reading')}</button>
+        </div>
+        <p className="fl-reading-mode-help">{readingMode === 'deep'
+          ? t('逐段阅读所选文档，再综合回答。会有更多 API 调用，可随时停止；留空即可生成所选文档的摘要。', 'Read the selected documents in sections, then combine the findings. Uses more API calls; stop any time. Leave the question empty to summarize those documents.')
+          : t('从全文中寻找相关片段，适合围绕具体问题讨论。', 'Find relevant excerpts across the full text to answer a specific question.')}</p>
         {chosenSelection && <div className="fl-selection-context"><div><Highlighter size={12} /><span>{t('{name} · 第 {page} 页', '{name} · p. {page}', { name: chosenSelection.documentName, page: chosenSelection.page })}</span><button className="fl-icon-button" aria-label={t("清除选中文字", "Clear selected text")} onClick={() => { onClearSelection(); setClipboardSelection(null); }}><X size={12} /></button></div><blockquote>{chosenSelection.text}</blockquote></div>}
-        <div className="fl-composer"><textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label={t("向 AI 提问", "Ask AI")} placeholder={hasKey ? t("关于这篇论文，你想了解什么？", "What would you like to know about this paper?") : t("先连接 AI 服务，再开始讨论…", "Connect an AI service to start discussing…")} rows={3} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!requestId) void send(input); } if (event.key === 'Escape' && requestRef.current) stopGeneration(); }} /><div className="fl-composer-bottom"><label className="fl-source-picker"><LayersIcon /><select aria-label={t("AI 引用文档范围", "AI source documents")} value={source} onChange={event => setSource(event.target.value)}><option value="all">{t('全部文档 · {count}', 'All documents · {count}', { count: workspace.documents.length })}</option>{workspace.documents.map(doc => <option value={doc.id} key={doc.id}>{doc.role === 'main' ? t("正文", "Main") : t("补充", "Supplement")} · {doc.name}</option>)}</select><ChevronDown size={10} /></label><button className="fl-icon-button" title={t("粘贴剪贴板文字作为引用", "Paste clipboard text as a quote")} aria-label={t("粘贴引用", "Paste quote")} disabled={!!requestId} onClick={() => void runAction(async () => { const text = await navigator.clipboard.readText(); if (!text.trim()) throw new Error(t("剪贴板为空，请先复制需要讨论的文字。", "The clipboard is empty. Copy the passage you want to discuss first.")); const doc = workspace.documents.find(item => item.id === workspace.layout.leftId) ?? workspace.documents[0]; if (!doc) throw new Error(t("请先导入 PDF 文档。", "Import a PDF first.")); setClipboardSelection({ text, documentId: doc.id, documentName: doc.name, page: doc.view.page, rects: [] }); })}><Clipboard size={14} /></button>{(PLATFORM === 'darwin' || PLATFORM === 'win32') && <button className="fl-icon-button fl-voice-entry" aria-label={voice.state.active ? t("停止语音对话", "Stop voice conversation") : t("开启语音对话", "Start voice conversation")} title={t("语音对话", "Voice conversation")} aria-pressed={voice.state.active} onClick={() => voice.state.active ? void voice.controller.end() : void voice.controller.configure()}><Mic size={15} /></button>}{requestId ? <button className="fl-send-button stopping" aria-label={t("停止生成", "Stop generation")} title={t("停止生成", "Stop generation")} onClick={stopGeneration}><Square size={13} fill="currentColor" /></button> : <button className="fl-send-button" aria-label={t("发送问题", "Send question")} title={t("发送 · Enter", "Send · Enter")} disabled={!input.trim() || !hasKey || actionBusy} onClick={() => void send(input)}><ArrowUp size={17} /></button>}</div></div>
+        <div className="fl-composer"><textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label={t("向 AI 提问", "Ask AI")} placeholder={hasKey ? readingMode === 'deep' ? t("针对问题精读，或留空生成全文摘要", "Add a question, or leave empty for a full summary") : t("关于这篇论文，你想了解什么？", "What would you like to know about this paper?") : t("先连接 AI 服务，再开始讨论…", "Connect an AI service to start discussing…")} rows={3} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!requestId) void send(input); } if (event.key === 'Escape' && requestRef.current) stopGeneration(); }} /><div className="fl-composer-bottom"><label className="fl-source-picker"><LayersIcon /><select aria-label={t("AI 引用文档范围", "AI source documents")} value={source} onChange={event => setSource(event.target.value)}><option value="all">{t('全部文档 · {count}', 'All documents · {count}', { count: workspace.documents.length })}</option>{workspace.documents.map(doc => <option value={doc.id} key={doc.id}>{doc.role === 'main' ? t("正文", "Main") : t("补充", "Supplement")} · {doc.name}</option>)}</select><ChevronDown size={10} /></label><button className="fl-icon-button" title={t("粘贴剪贴板文字作为引用", "Paste clipboard text as a quote")} aria-label={t("粘贴引用", "Paste quote")} disabled={!!requestId} onClick={() => void runAction(async () => { const text = await navigator.clipboard.readText(); if (!text.trim()) throw new Error(t("剪贴板为空，请先复制需要讨论的文字。", "The clipboard is empty. Copy the passage you want to discuss first.")); const doc = workspace.documents.find(item => item.id === workspace.layout.leftId) ?? workspace.documents[0]; if (!doc) throw new Error(t("请先导入 PDF 文档。", "Import a PDF first.")); setClipboardSelection({ text, documentId: doc.id, documentName: doc.name, page: doc.view.page, rects: [] }); })}><Clipboard size={14} /></button>{(PLATFORM === 'darwin' || PLATFORM === 'win32') && <button className="fl-icon-button fl-voice-entry" aria-label={voice.state.active ? t("停止语音对话", "Stop voice conversation") : t("开启语音对话", "Start voice conversation")} title={t("语音对话", "Voice conversation")} aria-pressed={voice.state.active} onClick={() => voice.state.active ? void voice.controller.end() : void voice.controller.configure()}><Mic size={15} /></button>}{requestId ? <button className="fl-send-button stopping" aria-label={t("停止生成", "Stop generation")} title={t("停止生成", "Stop generation")} onClick={stopGeneration}><Square size={13} fill="currentColor" /></button> : <button className="fl-send-button" aria-label={readingMode === 'deep' ? t("开始整篇精读", "Start full-paper reading") : t("发送问题", "Send question")} title={readingMode === 'deep' ? t("开始整篇精读 · Enter", "Start full-paper reading · Enter") : t("发送 · Enter", "Send · Enter")} disabled={(!input.trim() && readingMode !== 'deep') || !hasKey || actionBusy || !workspace.documents.length} onClick={() => void send(input)}><ArrowUp size={17} /></button>}</div></div>
         <div className="fl-composer-caption"><button onClick={onSettings}><span className={`fl-small-dot ${hasKey ? '' : 'muted'}`} />{provider.model}{provider.thinking !== false && settings.activeProvider === 'deepseek' && t(" · 思考", " · Thinking")}</button><span>{t("↵ 发送 · ⇧↵ 换行", "↵ Send · ⇧↵ New line")}</span></div>
       </div>
     </>}
@@ -442,7 +460,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
         <div className="fl-note-editor-heading"><strong>{t("我的笔记", "My notes")}</strong><div className="fl-segmented"><button className={!notesPreview ? 'active' : ''} onClick={() => setNotesPreview(false)}>{t("编辑", "Edit")}</button><button className={notesPreview ? 'active' : ''} onClick={() => setNotesPreview(true)}>{t("预览", "Preview")}</button></div></div>
         {notesPreview ? <div className="fl-note-preview fl-markdown">{notes.trim() ? md(notes) : <p className="fl-muted">{t("还没有笔记，写下第一个想法吧。", "No notes yet. Write down your first thought.")}</p>}</div> : <textarea className="fl-notes-editor" aria-label={t("个人阅读笔记", "Personal reading notes")} value={notes} onChange={event => { setNotes(event.target.value); setNotesStatus('saving'); }} onBlur={() => void flushNotes().catch(() => {})} placeholder={t("这篇论文让我想到…\n\n## 核心发现\n\n## 我的疑问\n\n## 下一步\n\n支持 Markdown，输入后自动保存。", "This paper makes me think…\n\n## Key findings\n\n## My questions\n\n## Next steps\n\nMarkdown supported. Notes save automatically.")} />}
         <p className="fl-note-hint"><Brain size={12} /> {t("笔记会作为上下文参与后续 AI 对话。", "Your notes provide context for future AI conversations.")}</p>
-        <section className="fl-summary-section"><div><span><Sparkles size={14} /><strong>{t("AI 阅读摘要", "AI paper summary")}</strong></span><button className="fl-text-link" disabled={!!requestId || !hasKey} onClick={() => void send(STARTERS[0].prompt, 'summary')}>{workspace.summary ? t("重新生成", "Regenerate") : t("生成摘要", "Generate summary")}<ArrowUpRight size={12} /></button></div>{workspace.summary ? <><div className="fl-markdown">{md(workspace.summary.content)}</div><span className="fl-summary-meta">{workspace.summary.model} · {new Date(workspace.summary.createdAt).toLocaleDateString(locale)}</span></> : <p>{t("生成一份结构化摘要，提炼研究问题、方法与主要结论。", "Generate a structured summary of the research question, methods, and main conclusions.")}</p>}</section>
+        <section className="fl-summary-section"><div><span><Sparkles size={14} /><strong>{t("AI 阅读摘要", "AI paper summary")}</strong></span><button className="fl-text-link" disabled={!!requestId || !hasKey} onClick={() => void send(STARTERS[0].prompt, 'summary')}>{workspace.summary ? t("重新生成", "Regenerate") : t("生成摘要", "Generate summary")}<ArrowUpRight size={12} /></button></div>{workspace.summary ? <><div className="fl-markdown">{md(workspace.summary.content)}</div><ReadingCoverage report={workspace.summary.reading} /><span className="fl-summary-meta">{workspace.summary.model} · {new Date(workspace.summary.createdAt).toLocaleDateString(locale)}</span></> : <p>{t("生成一份结构化摘要，提炼研究问题、方法与主要结论。", "Generate a structured summary of the research question, methods, and main conclusions.")}</p>}</section>
       </div>
       <div className="fl-notes-export"><button className="fl-button fl-obsidian-button" disabled={actionBusy} onClick={() => void exportNotes('obsidian')}><span>◇</span> {t("导出到 Obsidian", "Export to Obsidian")} <ArrowUpRight size={14} /></button><button className="fl-icon-button" aria-label={t("导出 Markdown 文件", "Export Markdown file")} title={t("导出 Markdown", "Export Markdown")} disabled={actionBusy} onClick={() => void exportNotes('file')}><ArrowDownToLine size={17} /></button></div>
     </div>}

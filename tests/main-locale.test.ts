@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as storeModule from '../electron/store';
 import * as desktop from '../electron/desktop';
+import * as demo from '../electron/demo';
 import * as i18n from '../shared/i18n';
 import { loadBackendModule } from './backend-harness';
 import type { Settings } from '../shared/types';
@@ -41,7 +42,7 @@ async function harness(t: test.TestContext, platform: NodeJS.Platform = 'darwin'
     dialog: { showOpenDialog: async (_window: unknown, options: any) => { dialogs.push(options); return { canceled: true, filePaths: [] }; }, showMessageBox: async (_window: unknown, options: any) => { dialogs.push(options); return { response: 1 }; } },
   };
   const processMock = { ...process, platform, env: { ...(options.portable ? { PORTABLE_EXECUTABLE_FILE: 'Folio.exe' } : {}), ...(options.isolated ? { FOLIO_USER_DATA: directory } : {}) }, argv: ['Folio.exe'], cwd: () => directory } as unknown as NodeJS.Process;
-  const main = await loadBackendModule<any>('electron/main.ts', { electron, './voice': {createVoiceService:voiceFactory}, './store': storeModule, './settings': { SettingsStore }, './pdf-export': {}, './demo': {}, './ai': {}, './obsidian': {}, './desktop': { ...desktop, pdfDialogOptions: (mode: 'files' | 'folder' | 'mixed') => desktop.pdfDialogOptions(mode, platform) }, '../shared/i18n': i18n, './updater': { createUpdateService: (host: any) => { updateHost = host; return updater; } } },
+  const main = await loadBackendModule<any>('electron/main.ts', { electron, './voice': {createVoiceService:voiceFactory}, './store': storeModule, './settings': { SettingsStore }, './pdf-export': {}, './demo': demo, './ai': {}, './obsidian': {}, './desktop': { ...desktop, pdfDialogOptions: (mode: 'files' | 'folder' | 'mixed') => desktop.pdfDialogOptions(mode, platform) }, '../shared/i18n': i18n, './updater': { createUpdateService: (host: any) => { updateHost = host; return updater; } } },
     `export const testMain={stopVoice,makeMenu,registerIPC,choosePdfs,localizeBackendError,initializeUpdater,scheduleUpdateCheck,setState(state:any){settings=state.settings;library=state.library;window=state.window;ai=state.ai;}};`, processMock,
     { setTimeout: (callback: () => void, delay: number) => { const timer = { callback, delay }; timers.push(timer); return timer; }, clearTimeout: () => {} });
   main.testMain.setState({ settings, library, window, ai: { cancelWorkspace: async (id: string) => { calls.push(`cancel-ai:${id}`); } } });
@@ -145,4 +146,30 @@ test('native speech IPC is lazy, uses the trusted renderer and releases its help
   assert.deepEqual(h.voiceCalls.at(-1),['dispose']);
   await h.invoke('voice-capabilities','en-US');
   assert.equal(h.voiceInstances(),2);
+});
+
+
+test('paper-title confirmation and pane-swap IPC preserve state and localize rejected operations', async t => {
+  const h=await harness(t);await h.settings.save({...h.settings.public(),language:'en'});
+  const main=path.join(h.directory,'Main.pdf'),extra=path.join(h.directory,'Supplement.pdf');
+  await fs.writeFile(main,'%PDF-1.7\nMain');await fs.writeFile(extra,'%PDF-1.7\nSupplement');
+  const created=await h.invoke('create-workspace',[main,extra]);assert.equal(created.titleStatus,'pending');
+  await assert.rejects(h.invoke('update-workspace',created.id,{title:' '}),/Enter a paper title/);
+  const confirmed=await h.invoke('update-workspace',created.id,{title:'Chosen title'});assert.equal(confirmed.titleStatus,'confirmed');
+  const view={page:3,scale:'1.5',rotation:90,scrollMode:1,spreadMode:0};
+  await h.invoke('update-view',created.id,created.layout.leftId,'left',view,created.layout.paneRevision);
+  const swapped=await h.invoke('swap-panes',created.id,created.layout);
+  assert.equal(swapped.layout.leftId,created.layout.rightId);assert.deepEqual(swapped.layout.views.right.state,view);
+  await assert.rejects(h.invoke('swap-panes',created.id,created.layout),/panes have changed/);
+  await assert.rejects(h.handlers.get('folio:swap-panes')!({sender:{},senderFrame:{}},created.id,swapped.layout),/Unauthorized|未授权/);
+  const ignored=await h.invoke('update-view',created.id,created.layout.leftId,'left',{...view,page:8},created.layout.paneRevision);
+  assert.deepEqual(ignored,swapped);
+});
+
+test('the demonstration article is explicitly confirmed and never opens a new-import title prompt', async t => {
+  const h=await harness(t),workspace=await h.invoke('demo');
+  assert.equal(workspace.title,'A workspace for a closer reading');assert.equal(workspace.titleStatus,'confirmed');
+  assert.equal(workspace.documents.length,2);
+  await h.invoke('index-document',workspace.id,workspace.documents[0].id,{pageCount:1,outline:[],title:'Metadata title',pages:['Demo content']});
+  const existing=await h.invoke('demo');assert.equal(existing.id,workspace.id);assert.equal(existing.title,workspace.title);assert.equal(existing.titleStatus,'confirmed');
 });
