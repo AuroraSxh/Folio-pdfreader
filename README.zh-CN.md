@@ -24,8 +24,10 @@ Pairleaf（原名 Folio）是一个学术 PDF 阅读器，支持 macOS 和 Windo
 
 | 平台 | 版本 | 下载 |
 | --- | --- | --- |
-| macOS 13+，Apple Silicon / Intel | 0.7.0 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.7.0/Pairleaf-0.7.0-mac-universal.dmg) |
-| Windows 10 / 11，x64 | 0.7.0 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.7.0/Pairleaf-0.7.0-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.7.0/Pairleaf-0.7.0-windows-x64-portable.exe) |
+| macOS 13+，Apple Silicon / Intel | 0.8.0 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.8.0/Pairleaf-0.8.0-mac-universal.dmg) |
+| Windows 10 / 11，x64 | 0.8.0 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.8.0/Pairleaf-0.8.0-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.8.0/Pairleaf-0.8.0-windows-x64-portable.exe) |
+
+若 0.7.0 从 Gitee 更新时提示链接未通过验证，请在设置中将更新来源改为 GitHub 并保存，或使用上方 GitHub 完整安装包手动更新。
 
 Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文和设置都在后，可移除旧 Folio.app，但请保留数据目录。首次更名不会自动替换 Folio.app；以后更新 Pairleaf 才是常规拖入替换。[更名与迁移说明](docs/rename-pairleaf.md#中文说明)
 
@@ -37,7 +39,7 @@ Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文
 
 | 版本 | 主要变化 |
 | --- | --- |
-| 尚未发布 | 调整文献库、PDF 工具、AI 对话和设置的布局，让文字更清晰、内容区更宽敞，并改善大字号显示。修复 Gitee 源码包识别和签名下载链接。 |
+| [0.8.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.8.0) | 文献库和设置更清晰紧凑，调整 PDF 工具与 AI 对话布局，改善文字对比度、键盘焦点和大字号显示。修复 Gitee 源码包识别和带签名参数的下载链接。 |
 | [0.7.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0) | 修复选段问答及重试；长文回答结合全文笔记和重新检索的原文。增加 DeepSeek、GPT、Claude、Kimi K3、GLM 原生联网搜索，沿用当前模型和 Key；新批注框悬浮在选文旁边。更新下载按网络地区优先选择大陆 Gitee、境外 GitHub，也可手动选源；发布流程同步两站。 |
 | [0.6.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.6.0) | 拖动 PDF 标签交换两栏，保留各自阅读位置；导入时识别文章名称，核对后确认。新增「智能问答」全文检索与「整篇精读」分批阅读，显示进度、来源范围并复用已读笔记。 |
 | [0.5.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1) | 可调整软件文字大小；点击带引用的 AI 回答，跳转到 PDF 并高亮核对成功的原文片段。旧回答只有页码时仍可跳页。 |

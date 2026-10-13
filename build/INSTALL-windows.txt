@@ -1,8 +1,8 @@
-Pairleaf 0.7.0（原 Folio）— Windows 10 / 11 x64
+Pairleaf 0.8.0（原 Folio）— Windows 10 / 11 x64
 
 安装与更新
-安装版：运行 Pairleaf-0.7.0-windows-x64-setup.exe，按向导安装或更新。
-免安装版：运行 Pairleaf-0.7.0-windows-x64-portable.exe；首次启动会临时解包，无需安装向导。
+安装版：运行 Pairleaf-0.8.0-windows-x64-setup.exe，按向导安装或更新。
+免安装版：运行 Pairleaf-0.8.0-windows-x64-portable.exe；首次启动会临时解包，无需安装向导。
 更新前退出 Pairleaf 或 Folio。安装版按向导更新；免安装版改用新的 EXE。不要同时运行新旧版本编辑同一论文库。
 免安装不代表数据自动跟随 EXE。论文和笔记默认仍在「文档/Folio Library」，设置仍在 %APPDATA%\Folio；自定义库路径不变。不要为更名删除数据目录。
 本包未使用 Windows 代码签名证书，请从官方 GitHub Releases 下载。
@@ -22,8 +22,8 @@ Windows 语音（实验性）
 Windows 安装、收音、朗读和资源占用尚未实机或虚拟机测试。Mac 上的交叉构建和静态检查不代替 Windows 实测。
 
 English
-Installer: run Pairleaf-0.7.0-windows-x64-setup.exe and follow the wizard.
-Portable: run Pairleaf-0.7.0-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
+Installer: run Pairleaf-0.8.0-windows-x64-setup.exe and follow the wizard.
+Portable: run Pairleaf-0.8.0-windows-x64-portable.exe; it extracts a temporary application without an installation wizard.
 Quit Pairleaf or Folio before updating. Follow the installer, or use the new portable EXE. Do not run both versions against one library.
 Portable does not mean your library travels with the EXE. Papers and notes remain in Documents/Folio Library by default; settings remain in %APPDATA%\Folio. Custom library paths are preserved. Do not delete data folders because of the rename.
 This build is unsigned; download it from the official GitHub Releases page.
@@ -38,6 +38,6 @@ It uses local System.Speech / SAPI and never uploads recordings. Transcripts and
 The speech helper needs .NET Framework 4.8 or compatible 4.8.1, normally included with recent Windows; no development SDK is required.
 Windows hardware/VM installation, microphone capture, playback, and resource use remain untested. Cross-building and static checks on Mac do not replace Windows device testing.
 
-下载 / Downloads: https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0
+下载 / Downloads: https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.8.0
 语音教程 / Voice guide: https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/windows-voice.md
 更名说明 / Migration: https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md

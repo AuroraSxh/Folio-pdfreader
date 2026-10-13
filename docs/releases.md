@@ -8,9 +8,9 @@
 使用 Node.js 24。先完成测试、Mac/Windows 打包、密钥检查，并将源码提交。两个仓库必须有指向同一提交的版本标签；工具不会创建标签、强制推送或删除历史版本。
 
 ```sh
-git tag -a v0.7.0 -m 'Pairleaf v0.7.0'
-git push origin main refs/tags/v0.7.0
-git push gitee main refs/tags/v0.7.0
+git tag -a v0.8.0 -m 'Pairleaf v0.8.0'
+git push origin main refs/tags/v0.8.0
+git push gitee main refs/tags/v0.8.0
 git rev-parse HEAD
 ```
 
@@ -20,14 +20,14 @@ git rev-parse HEAD
 git remote add gitee https://gitee.com/aurorasxh/pair-leaf.git
 ```
 
-将下面文件放在 `release/v0.7.0/`，替换为本次实际版本：
+将下面文件放在 `release/v0.8.0/`，替换为本次实际版本：
 
 ```text
-Pairleaf-0.7.0-mac-universal.dmg
-Pairleaf-0.7.0-windows-x64-setup.exe
-Pairleaf-0.7.0-windows-x64-portable.exe
-Pairleaf-0.7.0-mac-license-notices.zip
-Pairleaf-0.7.0-windows-license-notices.zip
+Pairleaf-0.8.0-mac-universal.dmg
+Pairleaf-0.8.0-windows-x64-setup.exe
+Pairleaf-0.8.0-windows-x64-portable.exe
+Pairleaf-0.8.0-mac-license-notices.zip
+Pairleaf-0.8.0-windows-license-notices.zip
 INSTALL-MAC.txt
 INSTALL-WINDOWS.txt
 RELEASE.md
@@ -40,7 +40,7 @@ RELEASE.md
 默认是 dry-run：仅读取本地文件和计算校验值，不联网、不读取凭据、不写文件。把 `<完整提交 SHA>` 替换为上面输出的 40 位 SHA。
 
 ```sh
-node scripts/publish-release.mjs --version 0.7.0 --commit <完整提交 SHA>
+node scripts/publish-release.mjs --version 0.8.0 --commit <完整提交 SHA>
 ```
 
 确认文件、版本和提交后：
@@ -50,7 +50,7 @@ node scripts/publish-release.mjs --version 0.7.0 --commit <完整提交 SHA>
 3. 执行同一条命令，加上 `--execute`：
 
 ```sh
-node scripts/publish-release.mjs --version 0.7.0 --commit <完整提交 SHA> --execute
+node scripts/publish-release.mjs --version 0.8.0 --commit <完整提交 SHA> --execute
 ```
 
 执行时先核对本地提交、该提交中 `package.json` 的版本、两端标签、凭据、已有附件及可取得的 Gitee 历史附件占用。源码版本必须与发布标签一致。然后创建 GitHub draft 和 **Gitee 公开预发行版**，上传并校验全部内容，最后发布为稳定版。Gitee 没有与 GitHub 相同的私有草稿功能，因此上传期间预发行版可能已经可见，自动更新器会忽略它。
