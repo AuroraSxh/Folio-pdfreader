@@ -41,11 +41,11 @@ export default function RemovedArticles({ items, onRestore, onPurge, busyId }: P
     }
   }
 
-  return <div className="fl-library fl-removed">
+  return <div className="fl-library fl-removed fl-refresh-library fl-refresh-removed">
     <section className="fl-library-intro">
       <div className="fl-library-title">
-        <span className="fl-eyebrow"><span className="fl-small-dot" /> ROOM TO RETURN</span>
-        <h1>{t("已移除文章","Removed Papers")}<span>{t("暂时放下的论文，也可以再找回。","Papers you put aside are still here.")}</span></h1>
+        <span className="fl-eyebrow"><span className="fl-small-dot" /> {t('需要时，随时找回', 'READY WHEN YOU RETURN')}</span>
+        <h1>{t("已移除文章","Removed Papers")}</h1>
         <p>{t("管理移出的工作区，随时恢复完整的阅读记录。","Restore removed workspaces with all their reading records.")}</p>
       </div>
       <span className="fl-removed-total"><Archive size={17} /><strong>{items.length}</strong>{t(" 篇保留中"," papers kept")}</span>

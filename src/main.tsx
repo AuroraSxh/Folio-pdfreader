@@ -2,6 +2,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles.css';
+import './design-refresh.css';
+import './components/workspace-refresh.css';
+import './components/pdf-refresh.css';
+import './components/assistant-refresh.css';
+import './components/library-settings-refresh.css';
 
 class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:string}> {
   state={error:''};

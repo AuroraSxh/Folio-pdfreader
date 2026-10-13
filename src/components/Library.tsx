@@ -31,11 +31,11 @@ export default function Library({ workspaces, onOpen, onCreate, onDemo, onToggle
   const withNotes = workspaces.filter(ws => ws.notes.trim() || ws.summary).length;
   const lastRead = [...workspaces].filter(ws => ws.lastReadAt > 0).sort((a, b) => b.lastReadAt - a.lastReadAt)[0];
 
-  return <div className="fl-library">
+  return <div className="fl-library fl-refresh-library">
     <section className="fl-library-intro">
       <div className="fl-library-title">
-        <span className="fl-eyebrow"><span className="fl-small-dot" /> YOUR RESEARCH, CONNECTED</span>
-        <h1>{FILTER_TITLES[filter]}<span>{t("让思考，留在纸页之间。","A place for your reading and ideas.")}</span></h1>
+        <span className="fl-eyebrow"><span className="fl-small-dot" /> {t('研究文献与阅读记录', 'PAPERS & READING NOTES')}</span>
+        <h1>{FILTER_TITLES[filter]}</h1>
         <p>{t("正文、补充材料与每一次灵感，在同一个工作区相遇。","Keep papers, supplements, and notes together.")}</p>
       </div>
       <button className="fl-button fl-primary" onClick={onCreate} disabled={busy}>{busy ? <LoaderCircle size={17} className="fl-spin" /> : <Plus size={17} />}{t(" 导入论文 "," Import paper ")}<kbd>{shortcutLabel('O')}</kbd></button>
@@ -66,10 +66,10 @@ export default function Library({ workspaces, onOpen, onCreate, onDemo, onToggle
     {!workspaces.length ? <section className="fl-library-empty">
       <div className="fl-empty-art" aria-hidden="true">
         <div className="fl-paper-back"><div /><div /><div /></div>
-        <div className="fl-paper-front"><div className="fl-paper-symbol"><BookOpen size={25} strokeWidth={1.3} /></div><span>Ideas start here.</span><div className="fl-paper-line" /><div className="fl-paper-line short" /><div className="fl-paper-columns"><i /><i /></div><div className="fl-paper-marker" /></div>
+        <div className="fl-paper-front"><div className="fl-paper-symbol"><BookOpen size={25} strokeWidth={1.3} /></div><div className="fl-paper-line" /><div className="fl-paper-line short" /><div className="fl-paper-columns"><i /><i /></div><div className="fl-paper-marker" /></div>
         <div className="fl-art-badge"><Sparkles size={15} />{t(" 为好奇心留一页"," Room for curiosity")}</div>
       </div>
-      <span className="fl-eyebrow">A LITTLE SPACE FOR BIG IDEAS</span>
+      <span className="fl-eyebrow">{t('为下一次发现留一页', 'ROOM FOR YOUR NEXT DISCOVERY')}</span>
       <h2>{t("下一篇好论文，从这里开始。","Your next paper starts here.")}</h2>
       <p>{t("导入正文 PDF，创建论文专属工作区。","Import a PDF to create a workspace for your paper.")}<br />{t("把补充材料一起收好，让阅读、对照和记录自然发生。","Add the supplements, compare pages, and keep your notes close.")}</p>
       <div className="fl-empty-actions"><button className="fl-button fl-primary" onClick={onCreate} disabled={busy}>{busy ? <LoaderCircle size={17} className="fl-spin" /> : <Upload size={17} />}{t(" 导入第一篇论文"," Import your first paper")}</button><button className="fl-button fl-quiet" onClick={onDemo} disabled={busy}>{t("体验示例工作区 ","Try a demo workspace ")}<ArrowRight size={15} /></button></div>
@@ -80,8 +80,8 @@ export default function Library({ workspaces, onOpen, onCreate, onDemo, onToggle
         const progress = main?.pageCount ? Math.min(100, Math.round(main.view.page / main.pageCount * 100)) : 0;
         return <article className={`fl-workspace-card fl-card-tone-${index % 4}`} key={ws.id}>
           <button className="fl-card-open" onClick={() => onOpen(ws.id)} aria-label={t("打开 {v0}","Open {v0}",{v0:(ws.title)})}>
-            <div className="fl-card-cover"><div className="fl-cover-top"><span><FileText size={12} /> PDF</span>{ws.documents.length > 1 && <span><Layers3 size={12} /> +{ws.documents.length - 1}</span>}</div><div className="fl-cover-title">{ws.title}</div><div className="fl-cover-lines"><i /><i /><i /></div><span className="fl-cover-bottom">{ws.journal || 'RESEARCH PAPER'}</span></div>
-            <div className="fl-card-content"><div className="fl-card-meta">{ws.journal || t("论文工作区","Paper workspaces")}<span>{new Date(ws.createdAt).toLocaleDateString(locale, { month: 'short', day: 'numeric' })}</span></div><h3>{ws.title}</h3><p>{ws.authors || t("{v0} 个 PDF 文档","{v0} PDF documents",{v0:(ws.documents.length)})}</p><div className="fl-card-tags">{ws.tags.slice(0, 3).map(tag => <span key={tag}>{tag}</span>)}{ws.summary && <span className="fl-ai-tag"><Sparkles size={10} />{t(" 已生成摘要"," Summary ready")}</span>}</div><div className="fl-card-footer"><span><FolderOpen size={13} /> {ws.documents.length}{t(" 个文件"," files")}</span><span>{main?.pageCount ? t("{v0} / {v1} 页","Page {v0} of {v1}",{v0:(main.view.page),v1:(main.pageCount)}) : t("开始阅读","Start reading")}<ArrowRight size={13} /></span></div>{progress > 0 && <div className="fl-card-progress" title={t("当前页位置 {v0}%","Current page position: {v0}%",{v0:(progress)})}><i style={{ width: `${progress}%` }} /></div>}</div>
+            <div className="fl-card-cover" aria-hidden="true"><div className="fl-cover-top"><span><FileText size={12} /> PDF</span>{ws.documents.length > 1 && <span><Layers3 size={12} /> +{ws.documents.length - 1}</span>}</div><div className="fl-cover-paper"><BookOpen size={23} strokeWidth={1.35} /><div className="fl-cover-lines"><i /><i /><i /></div></div></div>
+            <div className="fl-card-content"><div className="fl-card-meta">{ws.journal || t("论文工作区","Paper workspaces")}<span>{new Date(ws.createdAt).toLocaleDateString(locale, { month: 'short', day: 'numeric' })}</span></div><h3 title={ws.title}>{ws.title}</h3><p title={ws.authors || undefined}>{ws.authors || t("{v0} 个 PDF 文档","{v0} PDF documents",{v0:(ws.documents.length)})}</p><div className="fl-card-tags">{ws.tags.slice(0, 3).map(tag => <span key={tag}>{tag}</span>)}{ws.summary && <span className="fl-ai-tag"><Sparkles size={10} />{t(" 已生成摘要"," Summary ready")}</span>}</div><div className="fl-card-footer"><span><FolderOpen size={13} /> {ws.documents.length}{t(" 个文件"," files")}</span><span>{main?.pageCount ? t("{v0} / {v1} 页","Page {v0} of {v1}",{v0:(main.view.page),v1:(main.pageCount)}) : t("开始阅读","Start reading")}<ArrowRight size={13} /></span></div>{progress > 0 && <div className="fl-card-progress" title={t("当前页位置 {v0}%","Current page position: {v0}%",{v0:(progress)})}><i style={{ width: `${progress}%` }} /></div>}</div>
           </button>
           <div className="fl-card-actions"><button className={`fl-icon-button ${ws.favorite ? 'is-favorite' : ''}`} aria-label={ws.favorite ? t("取消收藏","Remove from favorites") : t("收藏论文","Add to favorites")} title={ws.favorite ? t("取消收藏","Remove from favorites") : t("收藏论文","Add to favorites")} onClick={() => onToggleFavorite(ws)}><Star size={15} fill={ws.favorite ? 'currentColor' : 'none'} /></button><button className="fl-icon-button fl-card-delete" title={t("移除工作区","Remove workspace")} aria-label={t("移除 {v0}","Remove {v0}",{v0:(ws.title)})} onClick={() => onDelete(ws)}><Trash2 size={14} /></button></div>
         </article>;

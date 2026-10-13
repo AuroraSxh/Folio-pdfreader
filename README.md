@@ -37,6 +37,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
+| Unreleased | Clearer, more compact library, PDF tools, AI conversation and settings; improved text contrast and large-text layouts. Fix Gitee source-archive detection and signed downloads. |
 | [0.7.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0) | Fix selected-passage questions and retries; combine full-paper notes with fresh retrieval of original passages. Add native web search for DeepSeek, GPT, Claude, Kimi K3 and GLM using the selected model and key. New comments float beside selected text. Choose Gitee in mainland China and GitHub elsewhere for updates, with a manual source setting and publishing to both sites. |
 | [0.6.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.6.0) | Drag PDF tabs to swap panes while keeping reading positions; locally detect an imported paper’s title for confirmation. Adds full-text retrieval for Smart Q&A and batch-based Full-paper reading with progress, source coverage and reusable evidence notes. |
 | [0.5.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1) | Adjustable app text size; click cited AI answers to jump to the PDF and highlight a verified source excerpt. Older page-only citations still jump to the page. |

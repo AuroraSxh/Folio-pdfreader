@@ -1,0 +1,200 @@
+/* Kimi K3 review: readable answers, one composer toolbar, quiet source metadata.
+   Theme colors remain owned by the app. No backdrop filters or idle animation. */
+.fl-assistant {
+  --assistant-secondary: color-mix(in srgb, var(--fl-ink) 72%, var(--fl-surface));
+  --assistant-type-body: calc(13px * var(--ui-font-scale, 1));
+  --assistant-type-label: calc(11px * var(--ui-font-scale, 1));
+  --assistant-type-detail: calc(10px * var(--ui-font-scale, 1));
+  container-type: inline-size;
+  container-name: reading-companion;
+}
+
+.fl-assistant .fl-assistant-header { gap: 10px; padding: 12px 14px 10px; }
+.fl-assistant .fl-assistant-header strong { font-size: var(--assistant-type-body); font-weight: 650; letter-spacing: 0; }
+.fl-assistant .fl-assistant-header > div > span { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); letter-spacing: 0; }
+.fl-assistant .fl-assistant-logo { width: 32px; height: 32px; border-color: var(--fl-border); border-radius: 10px; }
+.fl-assistant .assistant-panel-controls { gap: 1px; }
+.fl-assistant .assistant-panel-controls > .fl-icon-button { width: 30px; min-width: 30px; height: 32px; color: var(--assistant-secondary); }
+.fl-assistant .fl-assistant-tabs { padding: 0 12px; gap: 8px; }
+.fl-assistant .fl-assistant-tabs > button { min-height: 38px; gap: 6px; padding: 8px 2px; font-size: var(--assistant-type-label); color: var(--assistant-secondary); }
+.fl-assistant .fl-assistant-tabs > button.active { color: var(--fl-green); font-weight: 600; }
+.fl-assistant .fl-assistant-tabs > button > span { font-size: var(--assistant-type-detail); padding: 0 5px; }
+.fl-assistant .fl-conversation-bar { padding: 4px 12px; gap: 7px; background: transparent; }
+.fl-assistant .fl-conversation-bar > svg { flex: none; color: var(--assistant-secondary); }
+.fl-assistant .fl-conversation-bar select { min-height: 30px; height: auto; font-size: var(--assistant-type-label); color: var(--assistant-secondary); }
+.fl-assistant .fl-conversation-bar .fl-icon-button { width: 32px; min-width: 32px; height: 32px; color: var(--assistant-secondary); }
+.fl-assistant .fl-chat-scroll { padding: 18px 16px 20px; }
+
+/* An answer stays on the page; only the user's question has a bubble. */
+.fl-assistant .fl-message { margin-bottom: 23px; font-size: var(--assistant-type-body); }
+.fl-assistant .fl-user-message { padding: 10px 12px; border-color: var(--fl-border); border-radius: 12px 12px 4px 12px; font-size: var(--assistant-type-body); line-height: 1.75; }
+.fl-assistant .fl-message-author { gap: 7px; margin-bottom: 10px; font-size: var(--assistant-type-label); }
+.fl-assistant .fl-message-author > span { width: 23px; height: 23px; border-radius: 7px; }
+.fl-assistant .fl-message-author small { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); min-width: 0; }
+.fl-assistant .fl-markdown { font-size: var(--assistant-type-body); line-height: 1.8; }
+.fl-assistant .fl-markdown p { margin: 10px 0; }
+.fl-assistant .fl-markdown h1 { font-size: calc(18px * var(--ui-font-scale, 1)); }
+.fl-assistant .fl-markdown h2 { font-size: calc(15px * var(--ui-font-scale, 1)); }
+.fl-assistant .fl-markdown h3, .fl-assistant .fl-markdown h4 { font-size: calc(14px * var(--ui-font-scale, 1)); }
+.fl-assistant .fl-markdown :is(h1, h2, h3, h4) { line-height: 1.5; margin: 20px 0 9px; font-weight: 650; }
+.fl-assistant .fl-markdown ul, .fl-assistant .fl-markdown ol { padding-left: 1.5em; }
+.fl-assistant .fl-markdown li { margin: 6px 0; }
+.fl-assistant .fl-markdown blockquote { color: var(--assistant-secondary); padding: 9px 12px; }
+.fl-assistant .fl-markdown pre, .fl-assistant .fl-markdown table { font-size: calc(12px * var(--ui-font-scale, 1)); }
+.fl-assistant .fl-message-actions { gap: 10px; margin-top: 8px; }
+.fl-assistant .fl-message-actions button { min-height: 32px; gap: 5px; padding: 4px 2px; font-size: var(--assistant-type-detail); color: var(--assistant-secondary); }
+.fl-assistant .fl-message-actions button:hover { color: var(--fl-green); }
+.fl-assistant .fl-interrupted, .fl-assistant .fl-message-voice { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); }
+.fl-assistant .fl-thinking > small { font-size: var(--assistant-type-label); color: var(--assistant-secondary); }
+.fl-assistant .fl-thinking > span { animation: none; opacity: .65; }
+.fl-assistant .fl-inline-error { font-size: var(--assistant-type-label); line-height: 1.65; border-radius: 9px; }
+.fl-assistant .fl-inline-error button { min-height: 32px; font-size: var(--assistant-type-label); }
+
+/* Long filenames remain available to assistive technology and in the tooltip.
+   Keep the page number visible even when the filename has to be shortened. */
+.fl-assistant .fl-markdown .fl-source-citation { display: inline-flex; align-items: center; vertical-align: baseline; gap: 3px; max-width: 100%; padding: 1px 5px; margin: 0 2px; border-radius: 5px; font-size: .86em; line-height: 1.65; color: var(--fl-green); background: var(--fl-green-soft); }
+.fl-assistant .fl-source-citation > svg, .fl-assistant .fl-citation-page { flex: none; }
+.fl-assistant .fl-citation-name { min-width: 0; max-width: 19ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-assistant .fl-citation-page { white-space: nowrap; }
+.fl-assistant .fl-source-choices { font-size: var(--assistant-type-label); }
+.fl-assistant .fl-source-choices button { min-height: 32px; }
+
+/* Compact introduction with the same four existing actions. */
+.fl-assistant .fl-chat-welcome { padding-top: 3px; }
+.fl-assistant .fl-ai-orb { width: 38px; height: 38px; margin-bottom: 11px; border-radius: 12px; box-shadow: none; transform: none; background: var(--fl-purple-soft); border-color: var(--fl-border); }
+.fl-assistant .fl-ai-orb > svg { transform: none; }
+.fl-assistant .fl-chat-welcome h3 { margin-bottom: 8px; font-size: calc(19px * var(--ui-font-scale, 1)); line-height: 1.5; letter-spacing: 0; }
+.fl-assistant .fl-chat-welcome > p { max-width: 290px; margin-bottom: 16px; font-size: var(--assistant-type-label); line-height: 1.7; color: var(--assistant-secondary); }
+.fl-assistant .fl-key-cta { border-color: var(--fl-border); border-radius: 10px; }
+.fl-assistant .fl-key-cta strong { font-size: var(--assistant-type-label); }
+.fl-assistant .fl-key-cta small { font-size: var(--assistant-type-detail); opacity: 1; }
+.fl-assistant .fl-starters { gap: 8px; }
+.fl-assistant .fl-starters > button { min-height: 56px; padding: 10px 12px; border-radius: 9px; }
+.fl-assistant .fl-starters > button > svg { flex: none; color: var(--fl-green); }
+.fl-assistant .fl-starters > button:hover:not(:disabled) { transform: none; }
+.fl-assistant .fl-starters strong { font-size: calc(12px * var(--ui-font-scale, 1)); font-weight: 550; }
+.fl-assistant .fl-starters small { font-size: var(--assistant-type-detail); line-height: 1.5; color: var(--assistant-secondary); }
+.fl-assistant .fl-context-note { margin-top: 15px; font-size: var(--assistant-type-detail); color: var(--assistant-secondary); align-items: flex-start; }
+.fl-assistant .fl-context-note > svg { flex: none; margin-top: 2px; }
+
+/* One options row replaces two detached toolbars. It wraps at large type. */
+.fl-assistant .fl-composer-area { padding: 10px 12px 8px; }
+.fl-assistant .fl-composer-options { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.fl-assistant .fl-composer-options .fl-reading-mode { flex: 1 1 auto; margin: 0; gap: 3px; padding: 2px; background: var(--fl-bg); border: 1px solid var(--fl-border); border-radius: 8px; }
+.fl-assistant .fl-composer-options .fl-reading-mode > button { flex: 1 1 auto; min-height: 30px; min-width: 0; padding: 5px 7px; border-color: transparent; border-radius: 5px; font-size: var(--assistant-type-label); line-height: 1.4; white-space: normal; color: var(--assistant-secondary); background: transparent; }
+.fl-assistant .fl-composer-options .fl-reading-mode > button[aria-pressed=true] { background: var(--fl-surface); border-color: var(--fl-border); color: var(--fl-green); }
+.fl-assistant .fl-composer-options .fl-web-search-control { flex: 0 1 auto; margin: 0; gap: 6px; }
+.fl-assistant .fl-composer-options .fl-web-search-toggle { min-height: 34px; padding: 5px 8px; border-radius: 8px; font-size: var(--assistant-type-label); color: var(--assistant-secondary); }
+.fl-assistant .fl-composer-options .fl-web-search-toggle[aria-pressed=true] { color: var(--fl-green); border-color: var(--fl-green); background: var(--fl-green-soft); }
+.fl-assistant .fl-web-search-configure { min-height: 30px; font-size: var(--assistant-type-detail); }
+.fl-assistant .fl-reading-mode-help, .fl-assistant .fl-web-search-help { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); line-height: 1.55; margin: 0 0 5px; }
+.fl-assistant .fl-web-search-help { margin-bottom: 8px; }
+.fl-assistant .fl-composer { padding: 9px 10px 8px; border-color: var(--fl-border); border-radius: 12px; box-shadow: 0 1px 3px rgb(0 0 0 / 3%); }
+.fl-assistant .fl-composer:focus-within { border-color: var(--fl-green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--fl-green) 12%, transparent); }
+.fl-assistant .fl-composer > textarea { min-height: 48px; max-height: 120px; padding: 1px 0 8px; font-size: var(--assistant-type-body); line-height: 1.6; }
+.fl-assistant .fl-composer > textarea::placeholder { color: var(--assistant-secondary); }
+.fl-assistant .fl-composer-bottom { flex-wrap: wrap; gap: 5px; }
+.fl-assistant .fl-source-picker { flex: 1 1 120px; max-width: 100%; min-height: 32px; border-radius: 6px; padding: 4px 6px; color: var(--assistant-secondary); font-size: var(--assistant-type-detail); }
+.fl-assistant .fl-source-picker select { flex: 1; font-size: inherit; }
+.fl-assistant .fl-composer-bottom > .fl-icon-button { min-width: 32px; width: 32px; height: 32px; color: var(--assistant-secondary); }
+.fl-assistant .fl-composer-bottom > .fl-voice-entry[aria-pressed=true] { color: var(--fl-green); }
+.fl-assistant .fl-send-button { min-width: 34px; width: 34px; height: 34px; border-radius: 9px; color: var(--fl-surface); }
+.fl-assistant .fl-send-button.stopping { color: #fff; }
+.fl-assistant .fl-composer-caption { gap: 4px 8px; margin-top: 6px; font-size: var(--assistant-type-detail); color: var(--assistant-secondary); }
+.fl-assistant .fl-composer-caption > button { max-width: 100%; font-size: inherit; min-height: 24px; }
+.fl-assistant .fl-composer-caption > span { align-self: center; font-size: calc(9px * var(--ui-font-scale, 1)); }
+
+/* A selected passage remains adjacent to the input, with its original controls. */
+.fl-assistant .fl-selection-context { border-radius: 9px; padding: 5px 8px 8px; margin-bottom: 8px; color: var(--fl-ink); background: color-mix(in srgb, var(--fl-green-soft) 58%, var(--fl-surface)); border-color: var(--fl-border); }
+.fl-assistant .fl-selection-context > div { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); }
+.fl-assistant .fl-selection-context > div > svg { flex: none; color: var(--fl-green); }
+.fl-assistant .fl-selection-context .fl-icon-button { min-width: 30px; width: 30px; height: 30px; }
+.fl-assistant .fl-selection-context blockquote { font-size: var(--assistant-type-label); line-height: 1.65; border-left-color: var(--fl-green); color: var(--fl-ink); }
+.fl-assistant .fl-selection-context > small { display: block; margin-top: 5px; font-size: var(--assistant-type-detail); line-height: 1.5; color: var(--assistant-secondary); }
+
+/* Notes and memory use the same readable type hierarchy as the conversation. */
+.fl-assistant .fl-panel-scroll { padding: 18px 16px; }
+.fl-assistant .fl-notes-heading { margin-bottom: 19px; align-items: center; }
+.fl-assistant .fl-notes-heading h3 { margin: 0; font-size: calc(20px * var(--ui-font-scale, 1)); line-height: 1.45; letter-spacing: 0; }
+.fl-assistant .fl-notes-status { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); align-self: center; margin: 0; white-space: normal; }
+.fl-assistant .fl-notes-status.error { color: #b0553f; }
+.fl-assistant .fl-note-editor-heading { gap: 8px; flex-wrap: wrap; }
+.fl-assistant .fl-note-editor-heading > strong { font-size: calc(12px * var(--ui-font-scale, 1)); }
+.fl-assistant .fl-note-editor-heading .fl-segmented button { height: auto; min-height: 30px; padding: 4px 9px; font-size: var(--assistant-type-detail); }
+.fl-assistant .fl-notes-editor { min-height: 250px; padding: 14px; border-radius: 10px; font-size: var(--assistant-type-body); line-height: 1.8; }
+.fl-assistant .fl-notes-editor::placeholder { color: var(--assistant-secondary); }
+.fl-assistant .fl-note-preview { min-height: 250px; border-radius: 10px; padding: 14px; }
+.fl-assistant .fl-note-hint { align-items: flex-start; margin-bottom: 20px; font-size: var(--assistant-type-detail); line-height: 1.6; color: var(--assistant-secondary); }
+.fl-assistant .fl-note-hint > svg { flex: none; margin-top: 2px; }
+.fl-assistant .fl-summary-section > div:first-child > span { font-size: var(--assistant-type-label); }
+.fl-assistant .fl-summary-section > p { font-size: var(--assistant-type-label); line-height: 1.75; color: var(--assistant-secondary); }
+.fl-assistant .fl-summary-section .fl-markdown { font-size: var(--assistant-type-body); }
+.fl-assistant .fl-summary-meta { margin-top: 12px; font-size: var(--assistant-type-detail); color: var(--assistant-secondary); }
+.fl-assistant .fl-notes-export { padding: 10px 12px; background: transparent; }
+.fl-assistant .fl-obsidian-button { min-height: 38px; border-color: var(--fl-border); font-size: var(--assistant-type-label) !important; }
+.fl-assistant .fl-notes-export > .fl-icon-button { min-width: 38px; width: 38px; height: 38px; }
+.fl-assistant .fl-memory-intro { font-size: var(--assistant-type-label); line-height: 1.75; color: var(--assistant-secondary); }
+.fl-assistant .fl-memory-off { min-height: 32px; font-size: var(--assistant-type-detail) !important; color: var(--assistant-secondary); }
+.fl-assistant .fl-memory-index { margin: 16px 0; border-radius: 9px; }
+.fl-assistant .fl-memory-index > summary { min-height: 28px; font-size: var(--assistant-type-label); }
+.fl-assistant .fl-memory-index .fl-markdown { font-size: calc(12px * var(--ui-font-scale, 1)); }
+.fl-assistant .fl-memory-filters { margin: 16px 0; }
+.fl-assistant .fl-memory-filters > button { min-height: 30px; font-size: var(--assistant-type-detail); color: var(--assistant-secondary); }
+.fl-assistant .fl-memory-filters > button.active { color: var(--fl-green); border-color: var(--fl-green); }
+.fl-assistant .fl-memory-card { padding: 13px; border-radius: 10px; }
+.fl-assistant .fl-memory-card h4 { font-size: var(--assistant-type-body); font-weight: 600; line-height: 1.6; }
+.fl-assistant .fl-memory-card .fl-markdown { font-size: calc(12px * var(--ui-font-scale, 1)); color: var(--fl-ink); }
+.fl-assistant .fl-memory-card > div:first-child > span, .fl-assistant .fl-memory-card > footer { font-size: var(--assistant-type-detail); }
+.fl-assistant .fl-memory-card > div:first-child > .fl-icon-button { min-width: 32px; width: 32px; height: 32px; }
+.fl-assistant .fl-memory-card > footer { color: var(--assistant-secondary); }
+.fl-assistant .fl-memory-empty { padding: 26px 0; }
+.fl-assistant .fl-memory-empty > div { width: 50px; height: 50px; margin-bottom: 15px; }
+.fl-assistant .fl-memory-empty h4 { font-size: calc(15px * var(--ui-font-scale, 1)); }
+.fl-assistant .fl-memory-empty p { font-size: var(--assistant-type-label); line-height: 1.8; color: var(--assistant-secondary); }
+.fl-assistant .fl-memory-empty .fl-button { min-height: 36px; font-size: var(--assistant-type-label) !important; }
+.fl-assistant .fl-assistant-notice { font-size: var(--assistant-type-detail); line-height: 1.6; }
+.fl-assistant .fl-assistant-notice > .fl-icon-button { width: 30px; min-width: 30px; height: 30px; }
+.fl-assistant .fl-delete-exchange { font-size: var(--assistant-type-label); line-height: 1.65; }
+.fl-assistant .fl-delete-exchange .fl-button { min-height: 34px; }
+
+/* Real web evidence stays distinct from local PDF references. */
+.fl-assistant .fl-web-sources { margin-top: 12px; border-radius: 9px; font-size: var(--assistant-type-label); }
+.fl-assistant .fl-web-sources > header { padding: 9px 11px; }
+.fl-assistant .fl-web-sources > header > span, .fl-assistant .fl-web-source-number { font-size: var(--assistant-type-detail); }
+.fl-assistant .fl-web-query { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); margin-left: 11px; margin-right: 11px; }
+.fl-assistant .fl-web-source-list { padding: 0 11px; max-height: 250px; }
+.fl-assistant .fl-web-source-list a { min-height: 32px; gap: 8px; }
+.fl-assistant .fl-web-source-list strong { font-size: calc(12px * var(--ui-font-scale, 1)); line-height: 1.55; }
+.fl-assistant .fl-web-source-list small, .fl-assistant .fl-web-source-list li > p { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); }
+.fl-assistant .fl-web-source-list small { margin-top: 4px; }
+.fl-assistant .fl-web-source-list li > p { margin-left: 23px; line-height: 1.65; }
+.fl-assistant .fl-web-sources > footer, .fl-assistant .fl-web-empty { font-size: var(--assistant-type-detail); color: var(--assistant-secondary); }
+.fl-assistant .fl-reading-coverage { font-size: var(--assistant-type-detail); border-radius: 8px; color: var(--assistant-secondary); }
+.fl-assistant .fl-reading-coverage summary { min-height: 34px; padding: 7px 9px; }
+.fl-assistant .fl-reading-progress { font-size: var(--assistant-type-label); color: var(--assistant-secondary); }
+.fl-assistant .fl-reading-progress small { font-size: var(--assistant-type-detail); }
+
+/* Voice owns a separate portal. Keep the existing permissions and phase logic. */
+.fl-voice-controls { font-size: calc(13px * var(--ui-font-scale, 1)); border-radius: 14px; }
+.fl-voice-controls .fl-voice-heading strong { font-size: calc(14px * var(--ui-font-scale, 1)); }
+.fl-voice-controls .fl-voice-heading small { font-size: calc(11px * var(--ui-font-scale, 1)); line-height: 1.5; }
+.fl-voice-controls .fl-voice-icon { min-width: 32px; width: 32px; height: 32px; }
+.fl-voice-controls .fl-voice-options p, .fl-voice-controls .fl-voice-platform-note { font-size: calc(11px * var(--ui-font-scale, 1)); line-height: 1.65; }
+.fl-voice-controls .fl-voice-options { gap: 11px; }
+.fl-voice-controls .fl-voice-options label { gap: 6px 12px; }
+.fl-voice-controls .fl-voice-options label > span { min-width: 0; }
+.fl-voice-controls .fl-voice-options select { flex: 1 1 165px; width: auto; max-width: 100%; min-width: 0; min-height: 34px; }
+.fl-voice-controls .fl-voice-actions { flex-wrap: wrap; gap: 8px; }
+.fl-voice-controls .fl-voice-actions button, .fl-voice-controls .fl-voice-preview-actions button { min-height: 34px; }
+.fl-voice-controls .fl-voice-preview-actions { flex-wrap: wrap; gap: 8px 12px; }
+.fl-voice-controls .fl-voice-locale { font-size: calc(11px * var(--ui-font-scale, 1)) !important; }
+
+@container reading-companion (max-width: 330px) {
+  .fl-assistant .fl-assistant-header { gap: 8px; padding-left: 12px; padding-right: 10px; }
+  .fl-assistant .fl-assistant-header > .fl-assistant-logo { width: 28px; height: 28px; }
+  .fl-assistant .fl-chat-scroll, .fl-assistant .fl-panel-scroll { padding-left: 13px; padding-right: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fl-assistant *, .fl-voice-controls * { transition: none !important; }
+}

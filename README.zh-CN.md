@@ -37,6 +37,7 @@ Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文
 
 | 版本 | 主要变化 |
 | --- | --- |
+| 尚未发布 | 调整文献库、PDF 工具、AI 对话和设置的布局，让文字更清晰、内容区更宽敞，并改善大字号显示。修复 Gitee 源码包识别和签名下载链接。 |
 | [0.7.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0) | 修复选段问答及重试；长文回答结合全文笔记和重新检索的原文。增加 DeepSeek、GPT、Claude、Kimi K3、GLM 原生联网搜索，沿用当前模型和 Key；新批注框悬浮在选文旁边。更新下载按网络地区优先选择大陆 Gitee、境外 GitHub，也可手动选源；发布流程同步两站。 |
 | [0.6.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.6.0) | 拖动 PDF 标签交换两栏，保留各自阅读位置；导入时识别文章名称，核对后确认。新增「智能问答」全文检索与「整篇精读」分批阅读，显示进度、来源范围并复用已读笔记。 |
 | [0.5.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1) | 可调整软件文字大小；点击带引用的 AI 回答，跳转到 PDF 并高亮核对成功的原文片段。旧回答只有页码时仍可跳页。 |

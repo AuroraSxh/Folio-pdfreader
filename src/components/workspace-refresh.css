@@ -1,0 +1,168 @@
+/* Reading workspace: Kimi K3 researched direction, adapted to the existing
+   pane lifecycle. Load after styles.css. No grid/viewport/drag math changes. */
+.reading-workspace .workspace-topbar {
+  min-height: 48px;
+  height: auto;
+  padding: 6px 14px;
+  flex-wrap: wrap;
+  gap: 6px;
+  background: var(--panel, #fffffc);
+  border-bottom-color: var(--line, #dce2d9);
+}
+.reading-workspace .workspace-topbar > .icon-button,
+.reading-workspace .workspace-top-actions > .icon-button {
+  width: 30px;
+  height: 30px;
+  color: var(--muted, #657168);
+}
+.reading-workspace .workspace-top-title {
+  flex: 1 1 160px;
+  max-width: none;
+  min-width: 0;
+  padding-block: 5px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--text, #303d34);
+}
+.reading-workspace .workspace-top-actions {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.reading-workspace .back-button,
+.reading-workspace .workspace-top-actions .top-action {
+  min-height: 30px;
+  padding: 6px 8px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.35;
+  color: var(--muted, #657168);
+}
+.reading-workspace .workspace-top-actions .top-action > span { display: inline; }
+.reading-workspace .workspace-top-actions .top-action:is(:hover, .is-selected) {
+  color: var(--accent, #3c6550);
+  background: var(--soft, #eaf0e8);
+}
+.reading-workspace .workspace-top-actions .ai-toggle.is-selected {
+  color: var(--companion-accent, #70618f);
+  background: var(--companion-soft, #f0edf5);
+}
+.reading-workspace .workspace-topbar .favorite { color: var(--favorite-ink, #98763a); }
+.reading-workspace .workspace-topbar .breadcrumb-separator,
+.reading-workspace .workspace-topbar .action-divider { color: var(--line, #dce2d9); }
+.reading-workspace .workspace-topbar button:focus-visible {
+  outline: 2px solid var(--accent, #3c6550);
+  outline-offset: 2px;
+}
+
+/* The file tab identifies the document; the existing duplicate heading stays
+   hidden by styles.css. The active edge costs no document width. */
+.reading-workspace .reading-column .document-tab {
+  height: auto;
+  min-height: 36px;
+  padding: 4px 10px;
+  gap: 6px;
+  background: var(--sidebar, #f0f2ed);
+  border-bottom-color: var(--line, #dce2d9);
+  color: var(--muted, #657168);
+}
+.reading-workspace .reading-column.is-active .document-tab {
+  background: var(--panel, #fffffc);
+  color: var(--text, #303d34);
+  box-shadow: inset 0 2px 0 var(--accent, #3c6550);
+}
+.reading-workspace .document-tab select {
+  min-height: 26px;
+  padding: 3px 0;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.4;
+  color: var(--muted, #657168);
+}
+.reading-workspace .reading-column.is-active .document-tab select { color: var(--text, #303d34); }
+.reading-workspace .document-tab select:focus-visible {
+  outline: 2px solid var(--accent, #3c6550);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+.reading-workspace .document-role {
+  padding: 3px 6px;
+  border-color: var(--line, #dce2d9);
+  background: var(--soft, #eaf0e8);
+  color: var(--accent, #3c6550);
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.reading-workspace .document-role.supplement {
+  background: var(--supplement-soft, #f3eee4);
+  color: var(--supplement-ink, #7a6240);
+  border-color: var(--supplement-line, #e1d7c3);
+}
+.reading-workspace .document-tab [data-pane-swap-handle] {
+  color: var(--muted, #657168);
+  min-height: 26px;
+}
+
+/* Preserve the 6px splitter footprint and all keyboard/pointer hit testing. */
+.reading-workspace .split-divider {
+  background: var(--line, #dce2d9);
+  color: var(--muted, #657168);
+  transition: background-color .12s ease, color .12s ease;
+}
+.reading-workspace .split-divider > svg {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted, #657168) 18%, transparent);
+}
+.reading-workspace .split-divider:is(:hover, :focus-visible) {
+  color: var(--panel, #fffffc);
+  background: var(--accent, #3c6550);
+}
+.reading-workspace .split-divider:focus-visible { outline: 2px solid var(--accent, #3c6550); outline-offset: 1px; }
+
+.reading-workspace .reader-status {
+  height: auto;
+  min-height: 24px;
+  padding: 3px 12px;
+  flex-wrap: wrap;
+  row-gap: 3px;
+  background: var(--sidebar, #f0f2ed);
+  border-top-color: var(--line, #dce2d9);
+  color: var(--muted, #657168);
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  line-height: 1.45;
+}
+.reading-workspace .reader-status > span { min-width: 0; white-space: normal; }
+.reading-workspace .reader-status > button {
+  min-height: 20px;
+  font-size: inherit;
+  color: var(--muted, #657168);
+}
+.reading-workspace .reader-status > button:hover { color: var(--accent, #3c6550); }
+.reading-workspace .shared-annotation-host.fixed {
+  padding: 4px 10px;
+  background: var(--panel, #fffffc);
+  border-bottom-color: var(--line, #dce2d9);
+}
+.reading-workspace .layout-menu {
+  width: min(290px, calc(100vw - 28px));
+  border-color: var(--line, #dce2d9);
+  background: var(--panel, #fffffc);
+}
+.reading-workspace .layout-menu small,
+.reading-workspace .layout-menu footer { font-size: calc(10px * var(--ui-font-scale, 1)); line-height: 1.5; }
+.reading-workspace .layout-menu > button { color: var(--text, #303d34); }
+
+[data-theme=dark] .reading-workspace .document-role.supplement {
+  background: var(--supplement-soft, #363227);
+  border-color: var(--supplement-line, #514837);
+  color: var(--supplement-ink, #d4bc8c);
+}
+[data-theme=dark] .reading-workspace .workspace-top-actions .ai-toggle.is-selected {
+  color: var(--companion-accent, #c5b7df);
+  background: var(--companion-soft, #342e41);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reading-workspace .split-divider { transition: none; }
+}

@@ -1,0 +1,226 @@
+/* Reader-only appearance. All page/canvas/text-layer transforms, dimensions,
+   scroll containers and annotation hit testing remain owned by PDF.js. */
+.pdf-pane,
+.pdf-selection-tools {
+  --pdf-accent: var(--accent, #3c6550);
+  --pdf-accent-soft: var(--soft, #eaf0e8);
+  --pdf-border: var(--line, #dce2d9);
+  --pdf-ink: var(--text, #303d34);
+  --pdf-muted: var(--muted, #657168);
+}
+.pdf-pane { color: var(--pdf-ink); background: var(--sidebar, #f0f2ed); }
+.pdf-pane .pdf-toolbar {
+  min-height: 42px;
+  padding: 5px 8px;
+  column-gap: 2px;
+  row-gap: 4px;
+  background: var(--panel, #fffffc);
+  border-bottom-color: var(--pdf-border);
+}
+.pdf-pane .pdf-icon-button {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  color: var(--pdf-muted);
+  transition: background-color .12s ease, color .12s ease;
+}
+.pdf-pane .pdf-icon-button:is(:hover, .is-on):not(:disabled) {
+  color: var(--pdf-accent);
+  background: var(--pdf-accent-soft);
+}
+.pdf-pane .pdf-toolbar-divider { margin-inline: 3px; background: var(--pdf-border); }
+.pdf-pane .pdf-page-control input {
+  min-height: 28px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.35;
+  color: var(--pdf-ink);
+  background: var(--sidebar, #f0f2ed);
+  border: 1px solid var(--pdf-border);
+  border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-pane .pdf-page-control form span { color: var(--pdf-muted); font-variant-numeric: tabular-nums; }
+.pdf-pane .pdf-zoom-select {
+  min-height: 28px;
+  color: var(--pdf-ink);
+  font-variant-numeric: tabular-nums;
+}
+.pdf-pane .pdf-text-button {
+  min-height: 30px;
+  color: var(--pdf-accent);
+  border-color: var(--pdf-border);
+  background: var(--panel, #fffffc);
+}
+.pdf-pane .pdf-primary-button { color: var(--accent-contrast, #fff); background: var(--pdf-accent); }
+.pdf-pane button:focus-visible,
+.pdf-pane input:focus-visible,
+.pdf-pane select:focus-visible,
+.pdf-pane textarea:focus-visible { outline: 2px solid var(--pdf-accent); outline-offset: 2px; }
+.pdf-pane button:disabled { opacity: .4; }
+
+.pdf-pane .pdf-options,
+.pdf-pane .pdf-search-bar {
+  background: var(--panel, #fffffc);
+  border-color: var(--pdf-border);
+  color: var(--pdf-ink);
+}
+.pdf-pane .pdf-options { max-width: calc(100% - 18px); }
+.pdf-pane .pdf-options > label,
+.pdf-pane .pdf-options .pdf-menu-action,
+.pdf-pane .pdf-search-input { color: var(--pdf-muted); }
+.pdf-pane .pdf-search-input input { color: var(--pdf-ink); }
+.pdf-pane .pdf-options :is(select, input) {
+  color: var(--pdf-ink);
+  border-color: var(--pdf-border);
+  background: var(--sidebar, #f0f2ed);
+}
+.pdf-pane .pdf-options .pdf-menu-action:hover { background: var(--pdf-accent-soft); }
+.pdf-pane .pdf-search-input > span { color: var(--pdf-muted); }
+
+/* Sidebar surfaces use the same theme as the workspace, not paper filters. */
+.pdf-pane .pdf-sidebar { background: var(--sidebar, #f0f2ed); border-color: var(--pdf-border); }
+.pdf-pane .pdf-sidebar-tabs { min-height: 40px; height: auto; padding: 5px; border-color: var(--pdf-border); }
+.pdf-pane .pdf-sidebar-tabs button { min-width: 38px; height: 30px; color: var(--pdf-muted); }
+.pdf-pane .pdf-sidebar-tabs button:is(.is-on, :hover) { color: var(--pdf-accent); background: var(--pdf-accent-soft); }
+.pdf-pane .pdf-sidebar-caption { color: var(--pdf-muted); font-size: calc(11px * var(--ui-font-scale, 1)); }
+.pdf-pane .pdf-outline-row:hover { background: var(--pdf-accent-soft); }
+.pdf-pane .pdf-outline-row.is-selected { background: var(--pdf-accent-soft); border-left-color: var(--pdf-accent); }
+.pdf-pane .pdf-outline-link { color: var(--pdf-ink); }
+.pdf-pane .pdf-outline-link small,
+.pdf-pane .pdf-annotation-card small { color: var(--pdf-muted); font-size: calc(10px * var(--ui-font-scale, 1)); }
+.pdf-pane .pdf-outline-editor,
+.pdf-pane .pdf-comment-editor { background: var(--sidebar, #f0f2ed); border-top-color: var(--pdf-border); }
+.pdf-pane .pdf-outline-editor label,
+.pdf-pane .pdf-comment-editor label { font-size: calc(11px * var(--ui-font-scale, 1)); color: var(--pdf-muted); }
+.pdf-pane .pdf-outline-editor input,
+.pdf-pane .pdf-comment-editor :is(textarea, input, select) {
+  background: var(--panel, #fffffc);
+  border-color: var(--pdf-border);
+  color: var(--pdf-ink);
+}
+.pdf-pane .pdf-comment-actions { gap: 8px; }
+.pdf-pane .pdf-delete-annotation { color: var(--danger, #a54f46); }
+.pdf-pane .pdf-annotation-card { background: var(--panel, #fffffc); border-color: var(--pdf-border); border-left-color: var(--annotation-color); }
+.pdf-pane .pdf-annotation-card.is-selected { box-shadow: 0 0 0 1.5px var(--pdf-accent); }
+.pdf-pane .pdf-annotation-card blockquote { color: var(--pdf-muted); font-size: calc(11px * var(--ui-font-scale, 1)); }
+.pdf-pane .pdf-annotation-card p { color: var(--pdf-ink); }
+.pdf-pane .pdf-thumbnail { color: var(--pdf-muted); }
+.pdf-pane .pdf-thumbnail:hover { background: var(--pdf-accent-soft); }
+.pdf-pane .pdf-thumbnail.is-current .pdf-thumbnail-paper { outline-color: var(--pdf-accent); }
+.pdf-pane .pdf-sidebar-empty,
+.pdf-pane .pdf-sidebar-empty p { color: var(--pdf-muted); }
+.pdf-pane .pdf-sidebar-empty > span { font-size: calc(11px * var(--ui-font-scale, 1)); }
+
+.pdf-pane .pdf-status-bar {
+  min-height: 22px;
+  padding: 3px 10px;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  background: var(--sidebar, #f0f2ed);
+  border-top-color: var(--pdf-border);
+  color: var(--pdf-muted);
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  line-height: 1.45;
+}
+.pdf-pane .pdf-status-bar > span:first-child { white-space: normal; }
+.pdf-pane .pdf-status-bar i { background: var(--pdf-border); }
+
+/* These tools are usually portalled outside .pdf-pane; define their variables
+   above rather than relying on inheritance from the document they control. */
+.pdf-selection-tools {
+  padding: 5px;
+  gap: 2px;
+  border: 1px solid var(--pdf-border);
+  border-radius: 11px;
+  background: var(--panel, #fffffc);
+  box-shadow: 0 5px 20px #20352616, 0 1px 3px #2035260a;
+  color: var(--pdf-ink);
+}
+.pdf-selection-tools > button {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.35;
+  color: var(--pdf-muted);
+  transition: background-color .12s ease, color .12s ease;
+}
+.pdf-selection-tools > button:hover:not(:disabled) { background: var(--pdf-accent-soft); color: var(--pdf-accent); }
+.pdf-selection-tools > button.is-on { background: var(--pdf-accent-soft); color: var(--pdf-accent); box-shadow: inset 0 0 0 1px var(--pdf-accent); }
+.pdf-selection-tools > button:focus-visible,
+.pdf-highlight-colors button:focus-visible { outline: 2px solid var(--pdf-accent); outline-offset: 2px; }
+.pdf-selection-tools > button:disabled { opacity: .4; }
+.pdf-highlight-colors { gap: 3px; padding: 2px 7px 2px 3px; border-right-color: var(--pdf-border); }
+.pdf-highlight-colors button {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+  border-radius: 50%;
+}
+.pdf-highlight-colors button.is-chosen { border-color: var(--pdf-accent); outline: none; }
+.pdf-selection-tools .pdf-ask-button { background: var(--companion-soft, #f0edf5); color: var(--companion-accent, #70618f); }
+.pdf-selection-tools .pdf-ask-button:hover:not(:disabled) { background: color-mix(in srgb, var(--companion-accent, #70618f) 18%, var(--panel, #fffffc)); color: var(--companion-accent, #70618f); }
+.pdf-annotation-tools-fixed { border: 0; border-radius: 0; box-shadow: none; padding: 3px 0; }
+.pdf-markup-saving { color: var(--pdf-muted); }
+.pdf-copy-feedback { border-color: var(--pdf-border); color: var(--pdf-accent); background: var(--panel, #fffffc); }
+
+/* Selection-adjacent body portal: skin only. Keep its position, maximum size,
+   visibility, event listeners and z-index(80) under the geometry controller. */
+.folio-new-comment-popover {
+  padding: 13px 14px;
+  border-color: var(--line, #dce2d9);
+  background: var(--panel, #fffffc);
+  color: var(--text, #303d34);
+  box-shadow: 0 8px 28px #20352620, 0 1px 3px #2035260c;
+}
+.folio-comment-popover-heading strong { font-size: calc(12px * var(--ui-font-scale, 1)); color: var(--text, #303d34); }
+.folio-comment-popover-heading strong > svg {
+  box-sizing: content-box;
+  flex: 0 0 auto;
+  padding: 4px;
+  border-radius: 5px;
+  color: var(--accent, #3c6550);
+  background: var(--soft, #eaf0e8);
+}
+.folio-new-comment-popover blockquote {
+  padding: 6px 8px;
+  border-left-color: var(--accent, #3c6550);
+  border-radius: 0 6px 6px 0;
+  color: var(--muted, #657168);
+  background: var(--soft, #eaf0e8);
+}
+.folio-new-comment-popover label { color: var(--muted, #657168); }
+.folio-new-comment-popover textarea {
+  min-height: 64px;
+  background: var(--panel, #fffffc);
+  color: var(--text, #303d34);
+  border-color: var(--line, #dce2d9);
+}
+.folio-new-comment-popover textarea:focus-visible { outline: 2px solid var(--accent, #3c6550); outline-offset: 1px; }
+.folio-comment-popover-actions button { min-height: 32px; }
+.folio-comment-popover-actions button:not(.is-primary) { background: transparent; border-color: transparent; color: var(--muted, #657168); }
+.folio-comment-popover-actions button.is-primary { background: var(--accent, #3c6550); color: var(--accent-contrast, #fff); }
+.folio-comment-popover-actions button.is-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent, #3c6550) 90%, #000); }
+.folio-comment-popover-actions button:focus-visible { outline: 2px solid var(--accent, #3c6550); outline-offset: 2px; }
+
+.folio-pdf-context-menu { border-color: var(--line, #dce2d9); color: var(--text, #303d34); background: var(--panel, #fffffc); }
+.folio-pdf-context-menu button { min-height: 32px; }
+.pdf-pane .pdf-password-dialog { color: var(--pdf-ink); background: var(--panel, #fffffc); }
+.pdf-pane .pdf-password-dialog :is(h3, p) { color: inherit; }
+.pdf-pane .pdf-password-dialog > input { background: var(--sidebar, #f0f2ed); color: var(--pdf-ink); border-color: var(--pdf-border); }
+
+@container (max-width: 540px) {
+  .pdf-pane .pdf-sidebar { width: 168px; flex-basis: 168px; }
+  .pdf-pane .pdf-toolbar { padding-inline: 6px; }
+  .pdf-pane .pdf-toolbar-divider { margin-inline: 2px; }
+}
+[data-theme=dark] .pdf-selection-tools { box-shadow: 0 5px 20px #0004; }
+[data-theme=dark] .pdf-annotation-tools-fixed { box-shadow: none; }
+[data-theme=dark] .pdf-selection-tools .pdf-ask-button { background: var(--companion-soft, #342e41); color: var(--companion-accent, #c5b7df); }
+[data-theme=dark] .folio-new-comment-popover { box-shadow: 0 8px 28px #0006; }
+@media (prefers-reduced-motion: reduce) {
+  .pdf-pane .pdf-icon-button,
+  .pdf-selection-tools > button { transition: none; }
+}
