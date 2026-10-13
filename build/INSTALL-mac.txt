@@ -1,9 +1,9 @@
-Pairleaf 0.6.0 — 学术 PDF 阅读器（原 Folio）
+Pairleaf 0.7.0 — 学术 PDF 阅读器（原 Folio）
 macOS 13 或更高版本；通用应用支持 Apple Silicon 与 Intel。
 
 安装与更新
 1. 退出正在运行的 Pairleaf 或 Folio。
-2. 打开 Pairleaf-0.6.0-mac-universal.dmg，将 Pairleaf 拖入 Applications（应用程序）。已有 Pairleaf 时选择「替换」。
+2. 打开 Pairleaf-0.7.0-mac-universal.dmg，将 Pairleaf 拖入 Applications（应用程序）。已有 Pairleaf 时选择「替换」。
 3. 等待复制完成，弹出磁盘映像，再从「应用程序」打开 Pairleaf。
 如果使用 ZIP，先解压出 Pairleaf.app，再拖入 Applications；不要把 ZIP 改名为 DMG。
 首次从 Folio 更名更新时，Pairleaf.app 不会自动替换 Folio.app。确认原论文和设置正常后，可只移除旧 Folio.app，保留论文库、设置和钥匙串。不要同时运行新旧版本编辑同一论文库。
@@ -32,8 +32,8 @@ AI 需要在设置中自行填写 API Key；安装包不包含个人密钥、论
 已移除文章不会自动过期，可从「已移除文章」恢复；只有再次确认「彻底删除」才永久删除。
 
 English
-Pairleaf 0.6.0 supports macOS 13 or later, on Apple Silicon and Intel.
-Quit Pairleaf or Folio, open Pairleaf-0.6.0-mac-universal.dmg, and drag Pairleaf into Applications. Choose Replace for an existing Pairleaf installation. Wait for copying, eject the image, and open the app from Applications.
+Pairleaf 0.7.0 supports macOS 13 or later, on Apple Silicon and Intel.
+Quit Pairleaf or Folio, open Pairleaf-0.7.0-mac-universal.dmg, and drag Pairleaf into Applications. Choose Replace for an existing Pairleaf installation. Wait for copying, eject the image, and open the app from Applications.
 If using the ZIP, extract Pairleaf.app and move it into Applications. Do not rename the ZIP to DMG.
 For the first Folio-to-Pairleaf update, the names differ, so Finder will not replace Folio.app automatically. Check your papers and settings before removing only the old app. Keep the library, settings, and Keychain; do not run both versions against one library.
 This build is ad-hoc signed, without Apple Developer ID signing or notarization. After verifying the download's source, follow Apple's instructions for an unverified-developer prompt: https://support.apple.com/102445
@@ -46,5 +46,5 @@ Settings lets you change the language and app text size, connect Obsidian, and c
 Voice is off by default. Voice opens options; Start listening uses the microphone. Preview needs no key or microphone. Download enhanced/premium voices in macOS System Settings → Accessibility → Read & Speak, then refresh voices in Pairleaf and select Chinese and English separately. Changing the Mac default does not override saved app choices. The bilingual voice guide is linked above.
 The default library remains Documents/Folio Library, and settings remain in ~/Library/Application Support/Folio. Custom paths and the Folio Safe Storage Keychain name are preserved. Enter any requested Keychain password only in the system dialog. Removed papers stay recoverable until you explicitly confirm permanent deletion.
 
-下载 / Downloads: https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.6.0
+下载 / Downloads: https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0
 更名说明 / Migration: https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md

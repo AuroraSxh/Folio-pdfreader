@@ -200,6 +200,17 @@ test('DeepSeek nonthinking and Anthropic text streaming use correct separate pro
   assert.equal((await streamCompletion(config.providers.anthropic, [{ role: 'system', content: 'system' }, { role: 'user', content: 'Hi' }], new AbortController().signal, () => {})).text, 'Claude text');
 });
 
+test('OpenAI reasoning chat uses max_completion_tokens without changing the chosen model', async t => {
+  const server = await mock((body, response) => {
+    assert.equal(body.model, 'o3');
+    assert.equal(body.max_completion_tokens, 4096);
+    assert.equal(body.max_tokens, undefined);
+    answer(response, 'Reasoning model answer');
+  }); t.after(server.close);
+  const config = { ...settings(server.url).providers.openai, model: 'o3' };
+  assert.equal((await streamCompletion(config, [{ role: 'user', content: 'Explain the result.' }], new AbortController().signal, () => {})).text, 'Reasoning model answer');
+});
+
 test('HTTP errors and API stream errors are surfaced with keys redacted; truncated stream fails', async t => {
   let count = 0;
   const server = await mock((_body, response) => {

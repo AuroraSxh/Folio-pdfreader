@@ -14,16 +14,18 @@ Pairleaf（原名 Folio）是一个学术 PDF 阅读器，支持 macOS 和 Windo
 - 软件文字大小可单独调整，不影响 PDF 缩放。点击带引用的 AI 回答可查看出处，有准确原文片段时会高亮。
 - 使用系统语音与 AI 对话，默认关闭。[Mac 教程](docs/apple-voice.md#中文教程) · [Windows 教程](docs/windows-voice.md#中文教程)（实验性，取决于本机语音引擎）。
 - 将笔记导出到 Obsidian 或 Markdown。论文、批注和笔记保存在本地。
-- 支持中英文界面切换，可在应用内检查 GitHub 新版并下载安装包。
+- 支持中英文界面切换，可在应用内从 GitHub 或 Gitee 检查新版、下载安装包。
 
 ## 下载
 
 [最新版本与更新说明](https://github.com/AuroraSxh/Folio-pdfreader/releases/latest)
 
+[Gitee 国内仓库](https://gitee.com/aurorasxh/pair-leaf) · [双站发布说明](docs/releases.md)
+
 | 平台 | 版本 | 下载 |
 | --- | --- | --- |
-| macOS 13+，Apple Silicon / Intel | 0.6.0 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-mac-universal.dmg) |
-| Windows 10 / 11，x64 | 0.6.0 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.6.0/Pairleaf-0.6.0-windows-x64-portable.exe) |
+| macOS 13+，Apple Silicon / Intel | 0.7.0 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.7.0/Pairleaf-0.7.0-mac-universal.dmg) |
+| Windows 10 / 11，x64 | 0.7.0 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.7.0/Pairleaf-0.7.0-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.7.0/Pairleaf-0.7.0-windows-x64-portable.exe) |
 
 Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文和设置都在后，可移除旧 Folio.app，但请保留数据目录。首次更名不会自动替换 Folio.app；以后更新 Pairleaf 才是常规拖入替换。[更名与迁移说明](docs/rename-pairleaf.md#中文说明)
 
@@ -35,6 +37,7 @@ Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文
 
 | 版本 | 主要变化 |
 | --- | --- |
+| [0.7.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0) | 修复选段问答及重试；长文回答结合全文笔记和重新检索的原文。增加 DeepSeek、GPT、Claude、Kimi K3、GLM 原生联网搜索，沿用当前模型和 Key；新批注框悬浮在选文旁边。更新下载按网络地区优先选择大陆 Gitee、境外 GitHub，也可手动选源；发布流程同步两站。 |
 | [0.6.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.6.0) | 拖动 PDF 标签交换两栏，保留各自阅读位置；导入时识别文章名称，核对后确认。新增「智能问答」全文检索与「整篇精读」分批阅读，显示进度、来源范围并复用已读笔记。 |
 | [0.5.1](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.1) | 可调整软件文字大小；点击带引用的 AI 回答，跳转到 PDF 并高亮核对成功的原文片段。旧回答只有页码时仍可跳页。 |
 | [0.5.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.5.0) | Mac 与 Windows 同步更名 Pairleaf，沿用原论文库和设置；Windows 增加实验性的本地系统语音识别与朗读。 |

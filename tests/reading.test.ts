@@ -96,6 +96,33 @@ test('selected passages take priority, include their page label and obey the com
   }
 });
 
+test('a generic question anchors retrieval to the selected passage late in a long PDF page', () => {
+  const passage = 'Zephyrase inhibition restored the terminal response.';
+  const pages = Array.from({ length: 45 }, () => filler);
+  pages[34] = filler.repeat(6) + '\nLOCAL_CONTEXT_BEFORE ' + passage + ' LOCAL_CONTEXT_AFTER\n' + filler;
+  const docs = [source('Main', pages)];
+  const selection = { documentId: 'Main', documentName: 'Main.pdf', page: 35, text: passage, rects: [] };
+  for (const prompt of ['Explain this.', '这段是什么意思？']) {
+    const result = buildSmartContext(workspace, docs, 3200, prompt, selection);
+    assert.equal(result.strategy, 'retrieval');
+    assert.equal(result.needsQueryRewrite, false);
+    assert.match(result.content, /LOCAL_CONTEXT_BEFORE/);
+    assert.match(result.content, /LOCAL_CONTEXT_AFTER/);
+    assert.ok(result.content.length <= 3200);
+    assert.doesNotMatch(result.warnings.join(' '), /未找到与问题明确匹配/);
+  }
+});
+
+test('an explicit passage is not called a failed overview when its page index is missing', () => {
+  const pages = Array.from({ length: 25 }, () => filler); pages[19] = '';
+  const selection = { documentId: 'Main', documentName: 'Main.pdf', page: 20, text: 'Zephyrase selected evidence.', rects: [] };
+  const result = buildSmartContext(workspace, [source('Main', pages)], 2000, 'Explain this.', selection);
+  assert.equal(result.strategy, 'retrieval'); assert.equal(result.report.complete, false);
+  assert.match(result.content, /Zephyrase selected evidence/);
+  assert.doesNotMatch(result.content, /\[Main.pdf p.1\]/);
+  assert.doesNotMatch(result.warnings.join(' '), /未找到与问题明确匹配/);
+});
+
 test('an index-free selection reports its provided page without inventing a total page count or full coverage', () => {
   const doc = source('Main', []), selection = { documentId: 'Main', documentName: 'Main.pdf', page: 60, text: 'Explicitly selected evidence.', rects: [] };
   const result = buildSmartContext(workspace, [doc], 2000, 'Explain this selection', selection);

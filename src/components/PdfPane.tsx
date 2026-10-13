@@ -8,12 +8,14 @@ import { changeOutline, locateOutline } from '../pdf/outline';
 import { hasPdfIndex, loadPdf, readSharedPdfIndex } from '../pdf/documentIndex';
 import { markupRect, viewportRectPercent, type MarkupKind } from '../pdf/markupGeometry';
 import { sourceQuoteClientRects } from '../pdf/sourceHighlight';
+import { ownsCommentSelection, placeCommentPopover, projectCommentRect, type CommentBox, type CommentSelectionOwner } from '../pdf/commentPopover';
 import { beginAnnotationWrite, isAnnotationSaving, subscribeAnnotationWrites } from '../pdf/annotationWrites';
 import { hasPrimaryModifier, shortcutLabel } from '../platform';
 import { useI18n } from '../i18n';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdf-pane.css';
 import './source-highlight.css';
+import './comment-popover.css';
 
 interface PdfPaneProps {
   workspaceId: string;
@@ -36,7 +38,7 @@ interface PdfPaneProps {
   onError: (message: string) => void;
 }
 
-type SelectionBundle = { parts: TextSelection[]; text: string };
+interface SelectionBundle extends CommentSelectionOwner { parts: TextSelection[]; text: string }
 type SidebarTab = 'outline' | 'thumbnails' | 'annotations';
 type SourceStatus = 'locating' | 'matched' | 'page-only' | 'unmatched' | 'invalid';
 interface SourceLocation {
@@ -132,6 +134,8 @@ export default function PdfPane(props: PdfPaneProps) {
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const annotationInputRef = useRef<HTMLTextAreaElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const commentPopoverRef = useRef<HTMLFormElement>(null);
+  const newCommentInputRef = useRef<HTMLTextAreaElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const captureTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mounted = useRef(true);
@@ -173,6 +177,8 @@ export default function PdfPane(props: PdfPaneProps) {
   const [annotationKindDraft, setAnnotationKindDraft] = useState<MarkupKind>('highlight');
   const [annotationColorDraft, setAnnotationColorDraft] = useState(COLORS[0]);
   const [newComment, setNewComment] = useState(false);
+  const newCommentOpenRef = useRef(newComment);
+  newCommentOpenRef.current = newComment;
   const [localHighlightColor, setLocalHighlightColor] = useState(COLORS[0]);
   const [localHighlightArmed, setLocalHighlightArmed] = useState(false);
   const [localMarkupKind, setLocalMarkupKind] = useState<MarkupKind>('highlight');
@@ -187,6 +193,10 @@ export default function PdfPane(props: PdfPaneProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string; selection: SelectionBundle | null; annotationId: string | null } | null>(null);
   const [copied, setCopied] = useState(false);
+  const cancelComment = useCallback((restoreFocus = true) => {
+    setNewComment(false); setSelection(null); setCommentDraft('');
+    if (restoreFocus) containerRef.current?.focus({ preventScroll: true });
+  }, []);
 
   const submitAnnotations = (annotations: Annotation[]) => {
     if (latest.current.editBusy) return false;
@@ -288,10 +298,92 @@ export default function PdfPane(props: PdfPaneProps) {
 
   useEffect(() => {
     if (!selection || newComment) return;
-    const clearLostSelection = () => { if (!selectedText()) setSelection(null); };
+    const clearLostSelection = () => { if (!newCommentOpenRef.current && !selectedText()) setSelection(null); };
     window.document.addEventListener('selectionchange', clearLostSelection);
     return () => window.document.removeEventListener('selectionchange', clearLostSelection);
   }, [selection, newComment, selectedText]);
+
+  useEffect(() => {
+    if (newComment && (!active || !ownsCommentSelection(selection, workspaceId, paper.id))) cancelComment(false);
+  }, [newComment, active, selection, workspaceId, paper.id, cancelComment]);
+
+  useLayoutEffect(() => {
+    if (!newComment || !active || !selection || !ownsCommentSelection(selection, workspaceId, paper.id)) return;
+    const popover = commentPopoverRef.current, container = containerRef.current, viewer = viewerRef.current, bus = busRef.current;
+    if (!popover || !container || !viewer) return;
+    let frame = 0, disposed = false;
+    let anchor: { page: number; rect: number[] } | undefined;
+    let lastAnchor: CommentBox | undefined;
+    const project = (page: number, rect: number[]): CommentBox | undefined => {
+      const view = viewer.getPageView(page - 1), element = view?.div;
+      if (!element?.isConnected || !element.clientWidth || !element.clientHeight || !view.viewport) return;
+      const pageBounds = element.getBoundingClientRect();
+      return projectCommentRect(rect, view.viewport, { left: pageBounds.left, top: pageBounds.top,
+        clientWidth: element.clientWidth, clientHeight: element.clientHeight,
+        clientLeft: element.clientLeft, clientTop: element.clientTop }) ?? undefined;
+    };
+    const style = (property: 'left' | 'top' | 'maxWidth' | 'maxHeight' | 'visibility', value: string) => {
+      if (popover.style[property] !== value) popover.style[property] = value;
+    };
+    const update = () => {
+      frame = 0;
+      if (disposed || !ownsCommentSelection(selection, latest.current.workspaceId, latest.current.document.id)) return;
+      const viewBounds = container.getBoundingClientRect(), viewport = window.visualViewport;
+      const screenLeft = viewport?.offsetLeft ?? 0, screenTop = viewport?.offsetTop ?? 0;
+      const bounds = { left: Math.max(viewBounds.left, screenLeft), top: Math.max(viewBounds.top, screenTop),
+        right: Math.min(viewBounds.right, screenLeft + (viewport?.width ?? window.innerWidth)),
+        bottom: Math.min(viewBounds.bottom, screenTop + (viewport?.height ?? window.innerHeight)) };
+      if (!anchor) {
+        // Choose a visible end of the captured passage once. Subsequent events
+        // project this same PDF-space rectangle, even after native selection is lost.
+        outer: for (let index = selection.parts.length - 1; index >= 0; index--) {
+          const part = selection.parts[index];
+          for (let r = part.rects.length - 1; r >= 0; r--) {
+            const candidate = project(part.page, part.rects[r]);
+            if (!candidate) continue;
+            lastAnchor ??= candidate;
+            if (candidate.right > bounds.left && candidate.left < bounds.right && candidate.bottom > bounds.top && candidate.top < bounds.bottom) {
+              anchor = { page: part.page, rect: part.rects[r] }; lastAnchor = candidate; break outer;
+            }
+          }
+        }
+        anchor ??= { page: selection.parts[0].page, rect: selection.parts[0].rects[0] };
+      }
+      if (anchor.rect) lastAnchor = project(anchor.page, anchor.rect) ?? lastAnchor;
+      const candidate = lastAnchor ?? { left: bounds.left, right: bounds.left, top: bounds.top, bottom: bounds.top };
+      const limits = placeCommentPopover(candidate, bounds, { width: 340, height: 1 });
+      if (!limits) { style('visibility', 'hidden'); return; }
+      style('maxWidth', `${limits.maxWidth}px`); style('maxHeight', `${limits.maxHeight}px`);
+      const size = popover.getBoundingClientRect();
+      const placed = placeCommentPopover(candidate, bounds, size);
+      if (!placed) return;
+      style('left', `${Math.round(placed.left * 2) / 2}px`);
+      style('top', `${Math.round(placed.top * 2) / 2}px`);
+      style('visibility', 'visible');
+      if (popover.dataset.placement !== placed.placement) popover.dataset.placement = placed.placement;
+    };
+    const schedule = () => { if (!disposed && !frame) frame = requestAnimationFrame(update); };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(container); observer.observe(popover);
+    // Swapping equal-width panes preserves this PdfPane and its dimensions.
+    // Observe just the shared grid's layout/order, not its PDF subtree.
+    const columns = paneRef.current?.closest('.pdf-columns');
+    const layoutObserver = new MutationObserver(schedule);
+    if (columns) layoutObserver.observe(columns, { childList: true, attributes: true, attributeFilter: ['class', 'style'] });
+    const events = ['scalechanging', 'rotationchanging', 'pagerendered', 'updateviewarea', 'scrollmodechanged', 'spreadmodechanged'];
+    events.forEach(event => bus?.on(event, schedule));
+    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('resize', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+    window.visualViewport?.addEventListener('scroll', schedule);
+    update(); newCommentInputRef.current?.focus({ preventScroll: true });
+    return () => {
+      disposed = true; if (frame) cancelAnimationFrame(frame);
+      observer.disconnect(); layoutObserver.disconnect(); events.forEach(event => bus?.off(event, schedule));
+      window.removeEventListener('scroll', schedule, true); window.removeEventListener('resize', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule); window.visualViewport?.removeEventListener('scroll', schedule);
+    };
+  }, [newComment, active, selection, workspaceId, paper.id]);
 
   const goToPage = useCallback((target: number) => {
     const viewer = viewerRef.current;
@@ -693,7 +785,7 @@ export default function PdfPane(props: PdfPaneProps) {
   const readSelection = (): SelectionBundle | null => {
     const selected = window.getSelection();
     const viewer = viewerRef.current;
-    if (!mounted.current || !selected || !viewer || selected.isCollapsed || !selected.rangeCount || !containerRef.current?.contains(selected.anchorNode) || !containerRef.current.contains(selected.focusNode)) return null;
+    if (!mounted.current || workspaceId !== latest.current.workspaceId || paper.id !== latest.current.document.id || !selected || !viewer || selected.isCollapsed || !selected.rangeCount || !containerRef.current?.contains(selected.anchorNode) || !containerRef.current.contains(selected.focusNode)) return null;
     const text = selected.toString().trim();
     if (!text) return null;
     const range = selected.getRangeAt(0);
@@ -727,10 +819,11 @@ export default function PdfPane(props: PdfPaneProps) {
       if (rects.length) parts.push({ documentId: paper.id, documentName: paper.name, page: pageNumber, text: clipped.toString().trim(), rects });
     }
     if (!parts.length) return null;
-    return { parts, text };
+    return { workspaceId, documentId: paper.id, parts, text };
   };
 
   const captureSelection = (applyArmedMarkup = false) => {
+    if (newComment) return;
     clearTimeout(captureTimer.current);
     captureTimer.current = setTimeout(() => {
       if (!mounted.current) return;
@@ -743,21 +836,23 @@ export default function PdfPane(props: PdfPaneProps) {
   };
 
   const saveMarkup = (kind = markupKind, comment = '', bundle = selection) => {
-    if (!bundle || annotationBusy) return;
+    if (!bundle || !ownsCommentSelection(bundle, latest.current.workspaceId, latest.current.document.id) || annotationBusy) return false;
     const additions: Annotation[] = bundle.parts.map((part, index) => ({ id: crypto.randomUUID(), kind, page: part.page, text: part.text, comment: index === 0 ? comment : '', color: highlightColor, rects: part.rects, createdAt: Date.now() }));
-    if (!submitAnnotations([...latest.current.document.annotations, ...additions])) return;
+    if (!submitAnnotations([...latest.current.document.annotations, ...additions])) return false;
     setSelection(null); setNewComment(false); window.getSelection()?.removeAllRanges();
     if (comment) { setSidebar('annotations'); setAnnotationId(additions[0].id); setCommentDraft(comment); setAnnotationKindDraft(kind); setAnnotationColorDraft(highlightColor); }
+    return true;
   };
 
   const startComment = (bundle: SelectionBundle | null) => {
-    if (!bundle || annotationBusy) return;
+    if (!bundle || !ownsCommentSelection(bundle, latest.current.workspaceId, latest.current.document.id) || annotationBusy) return;
     clearTimeout(captureTimer.current);
     props.onActivate();
     setSelection(bundle);
     setHighlightArmed(false);
     setAnnotationId(null);
     setCommentDraft('');
+    newCommentOpenRef.current = true;
     setNewComment(true);
   };
 
@@ -807,23 +902,18 @@ export default function PdfPane(props: PdfPaneProps) {
   const selectedAnnotation = paper.annotations.find(item => item.id === annotationId);
   const contextAnnotation = paper.annotations.find(item => item.id === contextMenu?.annotationId);
   const annotationTools = (annotationToolbar !== 'selection' || selection) && <div className={`pdf-selection-tools pdf-annotation-tools-${annotationToolbar}${sharedToolbar ? ' pdf-annotation-tools-shared' : ''}`} role="toolbar" aria-label={t("文字与批注工具", "Text and annotation tools")} aria-busy={annotationBusy} onMouseDown={event => event.preventDefault()}>
-    {newComment && selection ? <form onMouseDown={event => event.stopPropagation()} onSubmit={event => { event.preventDefault(); saveMarkup(markupKind, commentDraft); }}>
-      <label>{t("给这段文字添加批注", "Add a comment to this passage")}<textarea autoFocus aria-label={t("新批注", "New comment")} value={commentDraft} onChange={event => setCommentDraft(event.target.value)} placeholder={t("你的想法、疑问或发现…", "Your thoughts, questions, or findings…")} /></label>
-      <div><button type="button" className="pdf-text-button" onClick={() => { setNewComment(false); setSelection(null); setCommentDraft(''); }}>{t("取消", "Cancel")}</button><button className="pdf-text-button" disabled={annotationBusy}><Check size={14} />{t("保存", "Save")}</button></div>
-    </form> : <>
       <button title={t("选择和复制文字，退出文字标记模式", "Select and copy text; exit markup mode")} aria-label={t("选择文字", "Select text")} aria-pressed={!highlightArmed} className={!highlightArmed ? 'is-on' : ''} disabled={!pdf} onClick={() => setHighlightArmed(false)}><MousePointer2 size={15} /></button>
       <div className="pdf-highlight-colors" role="group" aria-label={t("标记颜色", "Markup color")}>{COLORS.map((color, colorIndex) => <button key={color} style={{ backgroundColor: color }} className={highlightColor === color ? 'is-chosen' : ''} onClick={() => setHighlightColor(color)} title={t('高亮颜色 {color}', '{name} markup ({color})', { color, name: t(COLOR_NAMES[colorIndex][0], COLOR_NAMES[colorIndex][1]) })} aria-label={t('高亮颜色 {color}', '{name} markup ({color})', { color, name: t(COLOR_NAMES[colorIndex][0], COLOR_NAMES[colorIndex][1]) })} aria-pressed={highlightColor === color} />)}</div>
       {MARKUP_TOOLS.map(({ kind, label, Icon }) => {
         const chosen = highlightArmed && markupKind === kind;
-        return <button key={kind} title={chosen ? t('{tool}已开启：选中文字自动标记，再点一次或按 Esc 退出', '{tool} is on: select text to mark it. Click again or press Esc to exit.', { tool: label }) : t('开启{tool}，然后选中文字；已有选中文字时立即标记', 'Turn on {tool}, then select text. Selected text is marked immediately.', { tool: label })} aria-label={label} aria-pressed={chosen} className={chosen ? 'is-on' : ''} disabled={!pdf || annotationBusy} onClick={() => chooseMarkup(kind)}><Icon size={15} />{label}</button>;
+        return <button key={kind} title={chosen ? t('{tool}已开启：选中文字自动标记，再点一次或按 Esc 退出', '{tool} is on: select text to mark it. Click again or press Esc to exit.', { tool: label }) : t('开启{tool}，然后选中文字；已有选中文字时立即标记', 'Turn on {tool}, then select text. Selected text is marked immediately.', { tool: label })} aria-label={label} aria-pressed={chosen} className={chosen ? 'is-on' : ''} disabled={!pdf || annotationBusy || newComment} onClick={() => chooseMarkup(kind)}><Icon size={15} />{label}</button>;
       })}
       <button title={t('复制选中文字（{shortcut}）', 'Copy selected text ({shortcut})', { shortcut: shortcutLabel('C') })} aria-label={t("复制选中文字", "Copy selected text")} disabled={!selection} onClick={() => void copyText(selectedText() || selection?.text || '')}>{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? t("已复制", "Copied") : t("复制", "Copy")}</button>
-      <button title={selection ? t("给选中文字添加批注", "Add a comment to the selected text") : t("先选中文字，再添加批注", "Select text first to add a comment")} disabled={!selection || annotationBusy} onClick={() => startComment(selection)}><MessageSquare size={15} />{t("批注", "Comment")}</button>
-      <button title={selection ? t("针对选中文字向 AI 提问", "Ask AI about the selected text") : t("先选中文字，再向 AI 提问", "Select text first to ask AI")} className="pdf-ask-button" disabled={!selection} onClick={() => { if (selection) props.onAsk({ ...selection.parts[0], text: selection.text }); }}><Sparkles size={15} />{t("问 AI", "Ask AI")}</button>
+      <button title={selection ? t("给选中文字添加批注", "Add a comment to the selected text") : t("先选中文字，再添加批注", "Select text first to add a comment")} disabled={!selection || annotationBusy || newComment} onClick={() => startComment(selection)}><MessageSquare size={15} />{t("批注", "Comment")}</button>
+      <button title={selection ? t("针对选中文字向 AI 提问", "Ask AI about the selected text") : t("先选中文字，再向 AI 提问", "Select text first to ask AI")} className="pdf-ask-button" disabled={!selection || newComment} onClick={() => { if (selection) props.onAsk({ ...selection.parts[0], text: selection.text }); }}><Sparkles size={15} />{t("问 AI", "Ask AI")}</button>
       <button title={annotationToolbar === 'fixed' ? t("移到页面底部悬浮", "Float at the bottom of the page") : t("固定到顶部栏", "Dock at the top")} aria-label={t("切换工具栏位置", "Move annotation toolbar")} disabled={!props.onAnnotationToolbarChange} onClick={() => props.onAnnotationToolbarChange?.(annotationToolbar === 'fixed' ? 'floating' : 'fixed')}><MoveVertical size={15} /></button>
       {annotationBusy && <span className="pdf-markup-saving" role="status">{t("正在保存标记…", "Saving annotations…")}</span>}
-      {annotationToolbar === 'selection' && <button title={t("关闭选中文字工具", "Close selection tools")} aria-label={t("关闭选中文字工具", "Close selection tools")} onClick={() => { setSelection(null); setHighlightArmed(false); }}><X size={14} /></button>}
-    </>}
+      {annotationToolbar === 'selection' && <button title={t("关闭选中文字工具", "Close selection tools")} aria-label={t("关闭选中文字工具", "Close selection tools")} onClick={() => { cancelComment(); setHighlightArmed(false); }}><X size={14} /></button>}
   </div>;
 
   return <section ref={paneRef} className={`pdf-pane ${active ? 'is-active' : ''} reading-${readingTheme}`} onPointerDown={props.onActivate} aria-label={t('{name} 阅读器', '{name} reader', { name: paper.name })}>
@@ -920,6 +1010,16 @@ export default function PdfPane(props: PdfPaneProps) {
     </div>
     <footer className="pdf-status-bar"><span>{indexing ? t('正在准备文章索引 {progress}%', 'Preparing article index {progress}%', { progress: indexProgress }) : paper.textStatus === 'empty' ? t("扫描文档 · 暂无可提取文字", "Scanned document · No extractable text") : t('{count} 页 · 本地阅读', 'Pages: {count} · Local reading', { count: pageCount || '—' })}</span><span>{readingTheme === 'sepia' ? t("护眼纸色", "Sepia paper") : readingTheme === 'dark' ? t("夜间阅读", "Night reading") : t("原色显示", "Original colors")}<i />{scalePercent}%</span></footer>
     {sharedToolbar && active && props.annotationToolbarHost && createPortal(annotationTools, props.annotationToolbarHost)}
+    {newComment && active && selection && ownsCommentSelection(selection, workspaceId, paper.id) && createPortal(<form ref={commentPopoverRef}
+      className="folio-new-comment-popover" role="dialog" aria-label={t("添加批注", "Add comment")} aria-modal="false" aria-busy={annotationBusy}
+      data-document-id={paper.id} data-workspace-id={workspaceId} style={{ visibility: 'hidden' }}
+      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelComment(); } }}
+      onSubmit={event => { event.preventDefault(); if (saveMarkup(markupKind, commentDraft, selection)) containerRef.current?.focus({ preventScroll: true }); }}>
+      <div className="folio-comment-popover-heading"><strong><MessageSquare size={15} />{t("添加批注", "Add comment")}</strong><span>{selection.parts.length > 1 ? t('第 {from}–{to} 页', 'Pages {from}–{to}', { from: selection.parts[0].page, to: selection.parts[selection.parts.length - 1].page }) : t('第 {page} 页', 'Page {page}', { page: selection.parts[0].page })}</span></div>
+      <blockquote title={selection.text}>{selection.text}</blockquote>
+      <label>{t("给这段文字添加批注", "Add a comment to this passage")}<textarea ref={newCommentInputRef} aria-label={t("新批注", "New comment")} value={commentDraft} onChange={event => setCommentDraft(event.target.value)} placeholder={t("你的想法、疑问或发现…", "Your thoughts, questions, or findings…")} /></label>
+      <div className="folio-comment-popover-actions"><button type="button" onClick={() => cancelComment()}>{t("取消", "Cancel")}</button><button type="submit" className="is-primary" disabled={annotationBusy}><Check size={14} />{t("保存", "Save")}</button></div>
+    </form>, window.document.body)}
     {contextMenu && createPortal(<div ref={contextMenuRef} className="folio-pdf-context-menu" role="menu" aria-label={t("PDF 操作", "PDF actions")} style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={event => event.preventDefault()} onContextMenu={event => event.preventDefault()} onKeyDown={event => {
       if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); closeContextMenu(true); return; }
       if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;

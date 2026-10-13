@@ -280,7 +280,7 @@ function registerIPC(){
 }
 
 function initializeUpdater(){
-  updater=createUpdateService({version:app.getVersion(),platform:process.platform,arch:process.arch,portable:!!process.env.PORTABLE_EXECUTABLE_FILE,directory:path.join(app.getPath('userData'),'updates'),emit:status=>emit('update',status),
+  updater=createUpdateService({version:app.getVersion(),platform:process.platform,arch:process.arch,portable:!!process.env.PORTABLE_EXECUTABLE_FILE,directory:path.join(app.getPath('userData'),'updates'),emit:status=>emit('update',status),getSourcePreference:()=>settings.public().updateSource??'auto',
     flush:async()=>{await flushRenderer();if(process.platform==='win32')for(const ws of library.list())await ai.cancelWorkspace(ws.id);await library.flush();},
     openInstaller:async(file)=>{if(process.platform==='win32'&&process.env.PORTABLE_EXECUTABLE_FILE){shell.showItemInFolder(file);return;}const error=await shell.openPath(file);if(error)throw new Error(error);if(process.platform==='win32')app.quit();}
   });

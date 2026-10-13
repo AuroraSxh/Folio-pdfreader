@@ -5,9 +5,11 @@ import { atomicWrite } from './store';
 import type { Settings, ProviderId } from '../shared/types';
 import { normalizeLanguage, translate, type Language } from '../shared/i18n';
 import { DEFAULT_UI_FONT_SCALE, normalizeUIFontScale } from '../shared/uiFont';
+import { requiresReplacementKey } from '../shared/provider-presets';
+import { normalizeUpdateSourcePreference } from '../shared/updates';
 
 export function defaultSettings(libraryPath:string):Settings {
-  return {language:'zh-CN',autoCheckUpdates:true,activeProvider:'deepseek',providers:{
+  return {language:'zh-CN',autoCheckUpdates:true,updateSource:'auto',activeProvider:'deepseek',providers:{
     deepseek:{id:'deepseek',baseURL:'https://api.deepseek.com',model:'deepseek-flash',maxTokens:16384,thinking:true,reasoningEffort:'high'},
     openai:{id:'openai',baseURL:'https://api.openai.com/v1',model:'',maxTokens:8192},
     anthropic:{id:'anthropic',baseURL:'https://api.anthropic.com',model:'',maxTokens:8192},
@@ -28,6 +30,7 @@ export class SettingsStore {
     this.config={...defaults,...stored,libraryPath:defaults.libraryPath,providers:{...defaults.providers}} as Settings;
     this.config.language=normalizeLanguage(stored.language);
     this.config.autoCheckUpdates=stored.autoCheckUpdates!==false;
+    this.config.updateSource=normalizeUpdateSourcePreference(stored.updateSource);
     this.config.uiFontScale=normalizeUIFontScale(stored.uiFontScale);
     if(!['floating','fixed','selection'].includes(this.config.annotationToolbar))this.config.annotationToolbar='floating';
     for(const id of Object.keys(defaults.providers) as ProviderId[]){
@@ -51,6 +54,7 @@ export class SettingsStore {
     const next=this.get();
     next.language=language;
     next.autoCheckUpdates=input.autoCheckUpdates!==false;
+    next.updateSource=normalizeUpdateSourcePreference(input.updateSource);
     next.uiFontScale=normalizeUIFontScale(input.uiFontScale);
     next.activeProvider=input.activeProvider;
     for(const id of Object.keys(next.providers) as ProviderId[]){
@@ -60,6 +64,7 @@ export class SettingsStore {
         if(u.protocol!=='https:' && !(u.protocol==='http:' && ['localhost','127.0.0.1','[::1]'].includes(u.hostname)))throw new Error(t('API 地址须使用 HTTPS；本机服务可使用 HTTP','The API URL must use HTTPS; local services may use HTTP.'));
         if(u.username||u.password)throw new Error(t('请在 API Key 输入框填写凭证','Enter credentials in the API Key field.'));
       }
+      if(requiresReplacementKey(next.providers[id],{...p,baseURL}))throw new Error(t('API 地址已更换服务商或区域。请重新填写对应平台的 API Key 后保存。','The API address now points to another provider or region. Enter its API key before saving.'));
       next.providers[id]={id,baseURL,model:p.model.trim(),maxTokens:Math.max(256,Math.min(393216,Number(p.maxTokens)||8192)),thinking:p.thinking!==false,reasoningEffort:['low','high','max'].includes(p.reasoningEffort??'')?p.reasoningEffort:'high',apiKey:p.apiKey?.trim()||next.providers[id].apiKey};
     }
     next.vaultPath=typeof input.vaultPath==='string'?input.vaultPath:next.vaultPath;

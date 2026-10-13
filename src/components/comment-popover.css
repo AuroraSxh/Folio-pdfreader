@@ -1,0 +1,31 @@
+.folio-new-comment-popover {
+  position: fixed; z-index: 80; width: 340px; box-sizing: border-box; overflow: auto;
+  margin: 0; padding: 14px; border: 1px solid var(--line, #dfe5d8); border-radius: 12px;
+  background: var(--panel, #fffffc); color: var(--text, #3f5140);
+  box-shadow: 0 8px 28px #20332125; font-family: inherit; font-size: calc(12px * var(--ui-font-scale, 1));
+  scrollbar-width: thin; -webkit-app-region: no-drag;
+}
+.folio-comment-popover-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.folio-comment-popover-heading strong { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.folio-comment-popover-heading span { color: var(--muted, #8c948b); font-size: calc(10px * var(--ui-font-scale, 1)); white-space: nowrap; }
+.folio-new-comment-popover blockquote {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  margin: 10px 0 12px; padding: 1px 0 1px 9px; border-left: 2px solid #adc2a6;
+  color: var(--muted, #7e8a78); font-size: calc(11px * var(--ui-font-scale, 1)); line-height: 1.6; overflow-wrap: anywhere;
+}
+.folio-new-comment-popover label { display: block; font-size: calc(11px * var(--ui-font-scale, 1)); }
+.folio-new-comment-popover textarea {
+  display: block; width: 100%; height: 92px; min-height: 56px; max-height: 240px; box-sizing: border-box;
+  resize: vertical; margin: 7px 0 12px; padding: 8px; border: 1px solid var(--line, #dfe5d8); border-radius: 7px;
+  background: var(--bg, #f8faf5); color: inherit; font: inherit; line-height: 1.6;
+}
+.folio-comment-popover-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.folio-comment-popover-actions button {
+  display: inline-flex; justify-content: center; align-items: center; gap: 5px;
+  min-height: 30px; padding: 5px 12px; border: 1px solid var(--line, #dfe5d8); border-radius: 6px;
+  color: inherit; background: var(--panel, #fffffc); font: inherit; cursor: pointer;
+}
+.folio-comment-popover-actions button:hover:not(:disabled) { background: var(--soft, #e8eee7); }
+.folio-comment-popover-actions button.is-primary { background: var(--accent, #517564); border-color: transparent; color: #fff; }
+.folio-comment-popover-actions button:disabled { opacity: .45; cursor: default; }
+.folio-new-comment-popover textarea:focus-visible, .folio-new-comment-popover button:focus-visible { outline: 2px solid #86aa91; outline-offset: 2px; }

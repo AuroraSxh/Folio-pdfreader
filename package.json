@@ -1,6 +1,6 @@
 {
   "name": "folio-paper-reader",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A local-first academic PDF workspace with side-by-side reading and an AI companion",
   "author": "Pairleaf",
   "private": true,
@@ -28,7 +28,12 @@
     "test:pane-swap": "node scripts/e2e-pane-swap.mjs",
     "test:reading-modes": "node scripts/e2e-reading-modes.mjs",
     "build:windows-speech": "node scripts/build-windows-speech.mjs",
-    "test:windows-speech": "node native/windows-speech/Tests/run.mjs"
+    "test:windows-speech": "node native/windows-speech/Tests/run.mjs",
+    "test:selection-context": "node scripts/e2e-selection-context.mjs",
+    "test:web-search": "node scripts/e2e-web-search.mjs",
+    "test:comment-popover": "node scripts/e2e-comment-popover.mjs",
+    "test:update-sources": "node scripts/e2e-update-sources.mjs",
+    "release:publish": "node scripts/publish-release.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.577.0",
@@ -57,7 +62,7 @@
     "appId": "com.folio.paperreader",
     "productName": "Pairleaf",
     "directories": {
-      "output": "release/v0.6.0"
+      "output": "release/v0.7.0"
     },
     "files": [
       "dist/**/*",

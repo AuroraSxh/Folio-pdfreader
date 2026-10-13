@@ -7,12 +7,13 @@ import { build } from 'esbuild';
 import { createElement, type ComponentType, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ReadingReport } from '../shared/reading';
-import type { ChatEvent } from '../shared/types';
-import { resolveReadingRequest } from '../src/components/readingRequest';
+import type { WebSearchResult } from '../shared/web-search';
+import type { ChatEvent, TextSelection } from '../shared/types';
+import { resolveReadingRequest, resolveReadingSources } from '../src/components/readingRequest';
 
 test('request modes keep voice smart, summary deep, and retry independent of the current selector', () => {
   const question = { prompt: ' Explain page 60. ', language: 'en' as const };
-  assert.deepEqual(resolveReadingRequest(question), { prompt: 'Explain page 60.', kind: 'chat', readingMode: 'smart' });
+  assert.deepEqual(resolveReadingRequest(question), { prompt: 'Explain page 60.', kind: 'chat', readingMode: 'smart', webSearch: false });
   assert.equal(resolveReadingRequest({ ...question, mode: 'deep' }).readingMode, 'deep');
   assert.equal(resolveReadingRequest({ ...question, kind: 'summary', mode: 'smart' }).readingMode, 'deep');
   assert.equal(resolveReadingRequest({ ...question, mode: 'deep', override: 'smart' }).readingMode, 'smart');
@@ -28,12 +29,84 @@ test('an empty deep request uses the selected language summary prompt; smart inp
   assert.equal(resolveReadingRequest({ prompt: '', mode: 'deep', voice: true, language: 'en' }).prompt, '');
 });
 
-type Renderer = { ReadingCoverage: ComponentType<{ report?: ReadingReport }>; ReadingProgress: ComponentType<{ progress?: ChatEvent['progress'] }>; I18nProvider: ComponentType<{ language: 'en' | 'zh-CN'; children?: ReactNode }> };
+test('web search is opt-in in every reading mode and voice, while retry and automatic summaries keep an explicit snapshot', () => {
+  const question = { prompt: 'Explain this result.', language: 'en' as const };
+  for (const mode of ['smart', 'deep'] as const) {
+    assert.equal(resolveReadingRequest({ ...question, mode }).webSearch, false);
+    assert.equal(resolveReadingRequest({ ...question, mode, voice: true }).webSearch, false);
+    assert.equal(resolveReadingRequest({ ...question, mode, webSearch: true }).webSearch, true);
+  }
+  assert.equal(resolveReadingRequest({ ...question, webSearch: true, webSearchOverride: false }).webSearch, false);
+  assert.equal(resolveReadingRequest({ ...question, webSearch: false, webSearchOverride: true }).webSearch, true);
+  assert.equal(resolveReadingRequest({ ...question, kind: 'summary', webSearch: true, webSearchOverride: false }).webSearch, false);
+  assert.equal(resolveReadingRequest({ ...question, voice: true, webSearch: true }).webSearch, true);
+});
+
+const sourceDocuments = [{ id: 'paper' }, { id: 'supplement' }, { id: 'figures' }];
+const quote = (documentId = 'supplement', text = 'Selected evidence'): TextSelection => ({ documentId, documentName: `${documentId}.pdf`, page: 4, text, rects: [[0.1, 0.2, 0.3, 0.4]] });
+
+test('a passage from another PDF joins the filtered sources without replacing them', () => {
+  const selection = quote();
+  const result = resolveReadingSources({ documents: sourceDocuments, source: 'paper', selection });
+  assert.deepEqual(result.documentIds, ['paper', 'supplement']);
+  assert.equal(result.selection, selection);
+  assert.equal(result.addedSelectionDocument, true);
+  assert.equal(result.selectionUnavailable, false);
+});
+
+test('all-documents and same-document scopes include the quote once, and clearing it restores the base scope', () => {
+  const selection = quote();
+  const all = resolveReadingSources({ documents: sourceDocuments, source: 'all', selection });
+  assert.deepEqual(all.documentIds, ['paper', 'supplement', 'figures']);
+  assert.equal(all.addedSelectionDocument, false);
+  const same = resolveReadingSources({ documents: sourceDocuments, source: 'supplement', selection });
+  assert.deepEqual(same.documentIds, ['supplement']);
+  assert.equal(same.addedSelectionDocument, false);
+  const cleared = resolveReadingSources({ documents: sourceDocuments, source: 'paper', selection: null });
+  assert.deepEqual(cleared.documentIds, ['paper']);
+  assert.equal(cleared.selection, undefined);
+});
+
+test('retry keeps its original quote and ordered sources despite a new picker value or live selection', () => {
+  const original = quote('paper', 'Original passage');
+  const documentIds = ['supplement', 'paper'];
+  const result = resolveReadingSources({ documents: sourceDocuments, source: 'figures', selection: quote('figures', 'A different passage'), sourceOverride: documentIds, selectionOverride: original });
+  assert.deepEqual(result.documentIds, documentIds);
+  assert.notEqual(result.documentIds, documentIds);
+  assert.equal(result.selection, original);
+  assert.equal(result.addedSelectionDocument, false);
+  assert.deepEqual(documentIds, ['supplement', 'paper']);
+});
+
+test('a retry originally without a quote and an explicit summary request never inherit a newer quote', () => {
+  for (const selectionOverride of [null, undefined]) {
+    const result = resolveReadingSources({ documents: sourceDocuments, source: 'all', selection: quote('figures'), sourceOverride: ['paper'], selectionOverride });
+    assert.deepEqual(result.documentIds, ['paper']);
+    assert.equal(result.selection, undefined);
+    assert.equal(result.addedSelectionDocument, false);
+  }
+  const withoutQuote = resolveReadingSources({ documents: sourceDocuments, source: 'paper', selection: quote(), selectionOverride: null });
+  assert.deepEqual(withoutQuote.documentIds, ['paper']);
+  assert.equal(withoutQuote.selection, undefined);
+});
+
+test('a quote from a removed or different-workspace document is reported unavailable, not added to request sources', () => {
+  const result = resolveReadingSources({ documents: sourceDocuments, source: 'paper', selection: quote('removed') });
+  assert.deepEqual(result.documentIds, ['paper']);
+  assert.equal(result.selection, undefined);
+  assert.equal(result.selectionUnavailable, true);
+  assert.equal(result.addedSelectionDocument, false);
+  const retry = resolveReadingSources({ documents: sourceDocuments, source: 'all', selection: quote(), sourceOverride: ['paper'], selectionOverride: quote('removed') });
+  assert.equal(retry.selectionUnavailable, true);
+  assert.deepEqual(retry.documentIds, ['paper']);
+});
+
+type Renderer = { ReadingCoverage: ComponentType<{ report?: ReadingReport }>; ReadingProgress: ComponentType<{ progress?: ChatEvent['progress'] }>; WebSearchSources: ComponentType<{ result?: WebSearchResult; onError: (error: string) => void }>; visibleWebSearchResult: (input: unknown) => WebSearchResult | null; I18nProvider: ComponentType<{ language: 'en' | 'zh-CN'; children?: ReactNode }> };
 let ui: Renderer;
 before(async () => {
   // Bundle CSS away for server rendering; React and the real translation context
   // stay shared. This needs neither a browser process nor a listening socket.
-  const result = await build({ stdin: { contents: "export { ReadingCoverage, ReadingProgress } from './src/components/ReadingCoverage'; export { I18nProvider } from './src/i18n';", resolveDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), loader: 'tsx' }, bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external', loader: { '.css': 'empty' }, logLevel: 'silent' });
+  const result = await build({ stdin: { contents: "export { ReadingCoverage, ReadingProgress } from './src/components/ReadingCoverage'; export { WebSearchSources, visibleWebSearchResult } from './src/components/WebSearchSources'; export { I18nProvider } from './src/i18n';", resolveDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), loader: 'tsx' }, bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external', loader: { '.css': 'empty' }, logLevel: 'silent' });
   const module = { exports: {} };
   new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
   ui = module.exports as Renderer;
@@ -72,4 +145,48 @@ test('selection-only answers show unknown totals instead of dropping their repor
   assert.match(html, /片段页码：60/);
   assert.doesNotMatch(html, /1\/0|先在全文中寻找/);
   assert.match(renderCoverage(value), /Excerpts span 1 pages \(total unknown\)/);
+});
+
+const searchResult: WebSearchResult = { query: 'Related studies', searchedAt: Date.UTC(2026, 9, 13), sources: [{ title: 'Study <title>', url: 'https://example.org/paper', snippet: 'Evidence & context', publishedAt: '2026-09-20' }] };
+const renderSearch = (result: unknown, language: 'en' | 'zh-CN' = 'en') => renderToStaticMarkup(createElement(ui.I18nProvider, { language }, createElement(ui.WebSearchSources, { result: result as WebSearchResult, onError: () => {} })));
+
+test('web sources render separate accessible bilingual links, dates, and escaped snippets without fetching favicons', () => {
+  const english = renderSearch(searchResult);
+  assert.match(english, /aria-label="Web sources"/);
+  assert.match(english, /href="https:\/\/example\.org\/paper"/);
+  assert.match(english, /Study &lt;title&gt;/);
+  assert.match(english, /Evidence &amp; context/);
+  assert.match(english, /example\.org/);
+  assert.match(english, /Searched/);
+  assert.doesNotMatch(english, /<img|<iframe/);
+  const chinese = renderSearch(searchResult, 'zh-CN');
+  assert.match(chinese, /aria-label="网页来源"/);
+  assert.match(chinese, /搜索：Related studies/);
+  assert.match(chinese, /搜索于/);
+});
+
+test('imported web source data cannot create unsafe links, duplicates, invalid dates, or render-time errors', () => {
+  const input = { ...searchResult, sources: [
+    ...searchResult.sources, ...searchResult.sources,
+    { title: 'Unsafe JS', url: 'javascript:alert(1)', snippet: 'blocked' },
+    { title: 'Local file', url: 'file:///private/local.pdf', snippet: 'blocked' },
+    { title: 'Private service', url: 'http://127.0.0.1:9000', snippet: 'blocked' },
+    { title: 'Credentials', url: 'https://user:secret@example.org/', snippet: 'blocked' },
+    { title: '', url: 'https://example.net/', publishedAt: 'not-a-date' },
+    null,
+  ] };
+  const safe = ui.visibleWebSearchResult(input)!;
+  assert.equal(safe.sources.length, 2);
+  assert.equal(safe.sources[1].title, 'example.net');
+  assert.equal(safe.sources[1].publishedAt, undefined);
+  const html = renderSearch(input);
+  assert.doesNotMatch(html, /Unsafe JS|Local file|Private service|Credentials|javascript:|file:|Invalid Date/);
+  assert.equal(renderSearch({ ...searchResult, sources: null }), '');
+  assert.equal(renderSearch({ ...searchResult, searchedAt: Number.NaN }), '');
+});
+
+test('a completed empty search is stated honestly and absent search metadata creates no source card', () => {
+  assert.match(renderSearch({ ...searchResult, sources: [] }), /no usable web sources/);
+  assert.match(renderSearch({ ...searchResult, sources: [] }, 'zh-CN'), /没有返回可用的网页来源/);
+  assert.equal(renderSearch(undefined), '');
 });

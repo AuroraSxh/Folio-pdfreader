@@ -39,6 +39,7 @@ async function fixture(t: TestContext, options: Partial<UpdateHost> & { raw?: Re
   const raw = options.raw ?? release();
   const host: UpdateHost = {
     version: '0.2.2', platform: 'darwin', arch: 'arm64', directory,
+    getSourcePreference: () => 'github',
     openInstaller: async filename => { opened.push(filename); },
     ...options,
     emit: state => { states.push(state); for (const listen of listeners) listen(state); options.emit?.(state); },

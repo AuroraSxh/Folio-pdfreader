@@ -410,11 +410,12 @@ try {
   assert.equal(selectedPage, 3, 'Comment selection should identify its actual PDF page');
   await rightClickSelection(0);
   await page.getByRole('menuitem', { name: '添加批注', exact: true }).click();
-  const newCommentInput = toolbar().getByRole('textbox', { name: '新批注', exact: true });
+  const newCommentDialog = page.getByRole('dialog', { name: '添加批注', exact: true });
+  const newCommentInput = newCommentDialog.getByRole('textbox', { name: '新批注', exact: true });
   const commentText = '右键阅读批注：这里的证据值得核查。\nKeep the original quotation and page.';
   await newCommentInput.fill(commentText);
   assert.deepEqual(await annotations(), beforeComment, 'Opening and typing a new comment must not save an annotation');
-  await toolbar().getByRole('button', { name: '保存', exact: true }).click();
+  await newCommentDialog.getByRole('button', { name: '保存', exact: true }).click();
   const previousCommentIds = beforeComment.find(item => item.id === documentIds[0]).annotations.map(item => item.id);
   await waitWorkspace(w => w.documents.find(document => document.id === documentIds[0]).annotations.length === previousCommentIds.length + 1, 'context-menu comment saved exactly once');
   const savedComment = structuredClone((await workspace()).documents.find(document => document.id === documentIds[0]).annotations.find(item => !previousCommentIds.includes(item.id)));
@@ -432,7 +433,7 @@ try {
   const historyBeforeCancel = await page.evaluate(id => window.folio.getDocumentEditHistory(id), workspaceId);
   await page.getByRole('menuitem', { name: '添加批注', exact: true }).click();
   await newCommentInput.fill('Cancelled comment must never be saved');
-  await toolbar().getByRole('button', { name: '取消', exact: true }).click();
+  await newCommentDialog.getByRole('button', { name: '取消', exact: true }).click();
   await newCommentInput.waitFor({ state: 'hidden' });
   assert.deepEqual(await annotations(), beforeCancel);
   assert.deepEqual(await page.evaluate(id => window.folio.getDocumentEditHistory(id), workspaceId), historyBeforeCancel);

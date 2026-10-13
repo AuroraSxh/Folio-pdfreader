@@ -1,9 +1,12 @@
 import type { ReadingMode, ReadingReport } from './reading';
+import type { WebSearchResult } from './web-search';
 export type ProviderId = 'deepseek' | 'openai' | 'anthropic' | 'custom';
 export interface ProviderConfig { id: ProviderId; apiKey?: string; hasKey?: boolean; baseURL: string; model: string; maxTokens: number; thinking?: boolean; reasoningEffort?: 'low'|'high'|'max' }
 export interface Settings {
   language: import('./i18n').Language;
   autoCheckUpdates: boolean;
+  /** Older settings use automatic update source selection. */
+  updateSource?: import('./updates').UpdateSourcePreference;
   activeProvider: ProviderId; providers: Record<ProviderId, ProviderConfig>;
   libraryPath: string; vaultPath: string; obsidianSubfolder: string;
   autoSummary: boolean; autoMemory: boolean; contextMaxChars: number;
@@ -28,7 +31,7 @@ export interface PaperDocument {
 }
 export type MemoryType = 'finding' | 'interpretation' | 'question' | 'user-note' | 'cross-ref';
 export interface Memory { id: string; type: MemoryType; title: string; body: string; tags: string[]; createdAt: number; source: 'ai' | 'user'; sourceTurnIds?: string[] }
-export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice'; turnId?: string; reading?: ReadingReport }
+export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice'; turnId?: string; reading?: ReadingReport; webSearch?: WebSearchResult }
 export interface Conversation { id: string; title: string; createdAt: number; messages: ChatMessage[] }
 export interface Summary { content: string; provider: string; model: string; createdAt: number; sourceTurnId?: string; reading?: ReadingReport }
 export interface PaneSwapExpected { leftId: string; rightId: string; direction?: 'vertical'|'horizontal'; paneRevision?: number }
@@ -43,8 +46,8 @@ export interface Workspace {
 }
 export interface TextSelection { documentId: string; documentName: string; page: number; text: string; rects: number[][] }
 export interface DocumentIndex { pageCount: number; outline: OutlineItem[]; title?: string; authors?: string; pages: string[] }
-export interface ChatRequest { requestId: string; workspaceId: string; conversationId: string; prompt: string; kind: 'chat' | 'summary'; documentIds: string[]; selection?: TextSelection; source?: 'voice'; voiceLocale?: 'zh-CN' | 'en-US'; readingMode?: ReadingMode }
-export interface ChatEvent { requestId: string; workspaceId: string; type: 'delta' | 'done' | 'error' | 'memory' | 'status'; text?: string; workspace?: Workspace; interrupted?: boolean; reading?: ReadingReport; progress?: { phase: 'searching'|'reading'|'synthesizing'; completed: number; total: number; cached?: number } }
+export interface ChatRequest { requestId: string; workspaceId: string; conversationId: string; prompt: string; kind: 'chat' | 'summary'; documentIds: string[]; selection?: TextSelection; source?: 'voice'; voiceLocale?: 'zh-CN' | 'en-US'; readingMode?: ReadingMode; webSearch?: boolean }
+export interface ChatEvent { requestId: string; workspaceId: string; type: 'delta' | 'done' | 'error' | 'memory' | 'status'; text?: string; workspace?: Workspace; interrupted?: boolean; reading?: ReadingReport; webSearch?: WebSearchResult; progress?: { phase: 'searching'|'reading'|'synthesizing'; completed: number; total: number; cached?: number } }
 export interface ExportResult { path: string; overwritten?: boolean }
 export interface RemovedWorkspace { id: string; title: string; authors: string; tags: string[]; documentCount: number; removedAt: number }
 export interface DocumentEditHistory { canUndo: boolean; canRedo: boolean }

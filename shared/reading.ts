@@ -237,7 +237,8 @@ export function buildSmartContext(workspace: Workspace, documents: ReadingSource
       return { content, warnings: [...warnings, ...unavailableWarnings(report, language)], hasText, report, strategy: 'full', needsQueryRewrite: false };
     }
   }
-  const wanted = queryTerms(query, expandedQuery), pageRefs = pageReferences(query), figureRefs = figureReferences(query);
+  const wanted = queryTerms(query, [expandedQuery, selection?.text.slice(0, 1600)].filter(Boolean).join(' ')), pageRefs = pageReferences(query), figureRefs = figureReferences(query);
+  const selectedNeedle = selection?.text.trim().replace(/\s+/g, ' ').slice(0, 120).toLocaleLowerCase();
   const chunks = makeChunks(workspace.id, documents, wanted), df = new Map<string, number>();
   let totalLength = 0;
   for (const chunk of chunks) { totalLength += chunk.length; for (const term of chunk.counts.keys()) df.set(term, (df.get(term) ?? 0) + 1); }
@@ -245,6 +246,12 @@ export function buildSmartContext(workspace: Workspace, documents: ReadingSource
   const supplementHint = /\b(?:supplement(?:ary|al)?|supporting)\b|补充|附图/i.test(query), mainHint = /\bmain\b|正文/i.test(query);
   const named = documents.filter(doc => doc.name.replace(/\.pdf$/i, '').length >= 4 && query.toLowerCase().includes(doc.name.replace(/\.pdf$/i, '').toLowerCase()));
   for (const chunk of chunks) {
+    // A deictic question ("explain this") still has a precise source: the
+    // selected passage. Rank its page and matching chunk before other hits.
+    if (selectionText && chunk.doc.id === selection?.documentId && chunk.page === selection.page) {
+      chunk.score += 200; chunk.direct = true;
+      if (selectedNeedle && chunk.text.replace(/\s+/g, ' ').toLocaleLowerCase().includes(selectedNeedle)) chunk.score += 300;
+    }
     const supplement = chunk.doc.role ? chunk.doc.role === 'supplement' : /supp|support|补充/i.test(chunk.doc.name);
     // A comparison mentioning both scopes includes both, and an explicitly
     // named document is more precise than words appearing in its filename.
@@ -295,7 +302,7 @@ export function buildSmartContext(workspace: Workspace, documents: ReadingSource
         for (const adjacent of [chunks[index - 1], chunks[index + 1]]) if (adjacent?.doc.id === chunk.doc.id && Math.abs(adjacent.page - chunk.page) <= 1) add(adjacent);
       }
     }
-  } else {
+  } else if (!selectionText) {
     // An overview is explicitly labelled as such, never claimed as a relevant
     // retrieval hit. Include the ending too instead of repeating front pages.
     for (const doc of documents) {
@@ -312,7 +319,7 @@ export function buildSmartContext(workspace: Workspace, documents: ReadingSource
   warnings.push(translate(language, '本次按问题从全文中选择片段，未将整篇文章的全部文字发送给 AI；完整逐段分析请使用整篇精读。', 'This request selects passages from the full text for your question; it does not send every word of the paper. Use full-paper reading for a complete section-by-section analysis.'));
   const sample = documents.flatMap(doc => doc.pages.filter(page => page.trim()).slice(0, 3).map(page => page.slice(0, 1000))).join('');
   const english = (sample.match(/[a-z]/gi) ?? []).length > sample.length * .35;
-  return { content, warnings, hasText, report, strategy: ranked.length ? 'retrieval' : 'overview', needsQueryRewrite: !expandedQuery?.trim() && /\p{Script=Han}/u.test(query) && english && !pageRefs.size };
+  return { content, warnings, hasText, report, strategy: ranked.length || selectionText ? 'retrieval' : 'overview', needsQueryRewrite: !selectionText && !expandedQuery?.trim() && /\p{Script=Han}/u.test(query) && english && !pageRefs.size };
 }
 
 /** Stable deterministic identity, not a cryptographic trust boundary. The caller
