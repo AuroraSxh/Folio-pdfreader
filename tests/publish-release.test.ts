@@ -9,6 +9,10 @@ const { prepareRelease, publishRelease, localSourcePreflight, TARGETS } = await 
 const commit = 'a'.repeat(40), version = '0.7.0';
 const githubToken = 'github-fixture-credential', giteeToken = 'gitee-fixture-credential';
 const digest = (value: Buffer) => createHash('sha256').update(value).digest('hex');
+const sourceArchives = (tag: string) => ['.zip', '.tar.gz'].map(suffix => ({
+  name: tag + suffix,
+  browser_download_url: `https://gitee.com/${TARGETS.gitee.repository}/archive/refs/tags/${encodeURIComponent(tag)}${suffix}`,
+}));
 async function fixture(t: { after: (fn: () => Promise<void>) => void }, changes = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'pairleaf-publish-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -26,7 +30,8 @@ function http(plan: any) {
   let failGiteeUpload = false, failGithubFinalize = false;
   const history: Record<string, any[]> = { github: [], gitee: [] };
   const response = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
-  const release = (host: string) => state[host].release && { ...state[host].release, assets: [...state[host].files.values()].map(item => item.asset) };
+  const release = (host: string) => state[host].release && { ...state[host].release,
+    assets: [...state[host].files.values()].map(item => item.asset).concat(host === 'gitee' ? sourceArchives(state[host].release.tag_name) : []) };
   const fetch = async (input: string, init: any = {}) => {
     const url = new URL(input), host = url.hostname === 'gitee.com' ? 'gitee' : 'github', method = init.method ?? 'GET';
     const route = url.pathname.replace(/^\/api\/v5/, '');
@@ -93,6 +98,35 @@ function http(plan: any) {
   };
 }
 
+const fakeCdnToken = 'a'.repeat(32);
+function signedGiteeDownloads(transport: any, options: { changeRedirect?: (url: string, name: string) => string; corrupt?: boolean; historyName?: string } = {}) {
+  return async (input: string, init: any = {}) => {
+    const url = new URL(input), name = decodeURIComponent(url.pathname.split('/').at(-1)!);
+    if (url.hostname === 'gitee.com' && url.pathname.includes('/releases/download/')) {
+      assert.equal(new Headers(init.headers).has('authorization'), false);
+      return new Response(null, { status: 302, headers: { Location: `https://gitee.com/${TARGETS.gitee.repository}/attach_files/123/download/${encodeURIComponent(name)}` } });
+    }
+    if (url.hostname === 'gitee.com' && url.pathname.includes('/attach_files/')) {
+      assert.equal(new Headers(init.headers).has('authorization'), false);
+      const query = new URLSearchParams({ token: fakeCdnToken, ts: '1700000000', attname: name });
+      const location = `https://foruda.gitee.com/attach_file/123/${encodeURIComponent(name.toLowerCase())}?${query}`;
+      return new Response(null, { status: 302, headers: { Location: options.changeRedirect?.(location, name) ?? location } });
+    }
+    if (url.hostname === 'foruda.gitee.com') {
+      assert.equal(new Headers(init.headers).has('authorization'), false);
+      const originalName = url.searchParams.get('attname')!;
+      if (init.method === 'HEAD') {
+        assert.equal(originalName, options.historyName);
+        return new Response(null, { headers: { 'Content-Length': '57' } });
+      }
+      const original = transport.state.gitee.files.get(originalName).bytes;
+      const bytes = options.corrupt ? Buffer.alloc(original.length, 'z') : original;
+      return new Response(bytes, { headers: { 'Content-Length': String(bytes.length) } });
+    }
+    return transport.fetch(input, init);
+  };
+}
+
 test('default dry-run performs no credential lookup, HTTP request, alias creation or file write', async t => {
   const { directory, plan } = await fixture(t), before = await readdir(directory);
   const review = await publishRelease(plan, { fetch: () => assert.fail('No HTTP in dry-run'), githubToken: () => assert.fail('No credential lookup in dry-run') });
@@ -128,6 +162,66 @@ test('one host failing leaves releases staged, reports failure, and safely resum
   transport.failGitee(false);
   assert.equal((await publishRelease(plan, transport.options())).success, true);
   assert.equal(transport.calls.filter(call => call.host === 'github' && call.method === 'POST' && call.route.endsWith('/assets')).length, githubUploads);
+});
+
+test('Gitee 16 uploaded files plus two generated source archives finalize and resume without reuploading', async t => {
+  const { directory } = await fixture(t);
+  for (const [suffix, size] of [['mac-universal.dmg', 330], ['windows-x64-setup.exe', 210], ['windows-x64-portable.exe', 211]] as const)
+    await writeFile(path.join(directory, `Pairleaf-${version}-${suffix}`), Buffer.alloc(size, 'x'));
+  const plan = await prepareRelease({ directory, version, commit, giteePartSize: 80 });
+  assert.equal(plan.giteeAssets.length, 16);
+  const transport = http(plan), logs: string[] = [];
+  let interruptFinalization = true;
+  const options = { ...transport.options(), log: (line: string) => logs.push(line), fetch: async (input: string, init: any = {}) => {
+    if (interruptFinalization && input.startsWith('https://gitee.com/') && init.method === 'PATCH') return new Response('{}', { status: 503 });
+    return transport.fetch(input, init);
+  } };
+  await assert.rejects(publishRelease(plan, options), /gitee PATCH returned HTTP 503/);
+  assert.equal(transport.state.gitee.release.prerelease, true);
+  const response = await transport.fetch(`https://gitee.com/api/v5/repos/${TARGETS.gitee.repository}/releases/22`, { headers: { Authorization: `Bearer ${giteeToken}` } });
+  assert.equal((await response.json()).assets.length, 18);
+  const uploads = transport.calls.filter(call => call.method === 'POST').length;
+  interruptFinalization = false;
+  assert.equal((await publishRelease(plan, options)).success, true);
+  assert.equal(transport.calls.filter(call => call.method === 'POST').length, uploads);
+  assert.ok(plan.giteeAssets.every((asset: any) => logs.includes(`gitee: verifying ${asset.name}`)));
+});
+
+test('only exact platform archives are ignored; real extra ZIPs and lookalike URLs still block publication', async t => {
+  const { plan } = await fixture(t);
+  const canonical = sourceArchives(plan.tag)[0];
+  const candidates = [
+    { name: 'notes.zip', browser_download_url: `https://gitee.com/${TARGETS.gitee.repository}/releases/download/${plan.tag}/notes.zip` },
+    { ...canonical, browser_download_url: `https://gitee.com/${TARGETS.gitee.repository}/releases/download/${plan.tag}/${canonical.name}` },
+    { ...canonical, browser_download_url: canonical.browser_download_url.replace('gitee.com', 'example.com') },
+    { ...canonical, browser_download_url: canonical.browser_download_url + '?download=1' },
+    { ...canonical, browser_download_url: canonical.browser_download_url + '#source' },
+    { ...canonical, browser_download_url: canonical.browser_download_url.replace('https://gitee.com/', 'https://user@gitee.com/') },
+    { ...canonical, browser_download_url: canonical.browser_download_url.replace('https://gitee.com/', 'https://gitee.com:443/') },
+    { ...canonical, name: 'other.zip' },
+  ];
+  for (const asset of candidates) {
+    const transport = http(plan);
+    transport.state.gitee.release = { id: 22, tag_name: plan.tag, name: plan.name, body: plan.body, prerelease: true };
+    transport.state.gitee.files.set(asset.name, { bytes: Buffer.from('extra'), asset });
+    await assert.rejects(publishRelease(plan, transport.options()), /unexpected or duplicate asset names/);
+    assert.ok(!transport.calls.some(call => ['POST', 'PATCH', 'DELETE'].includes(call.method)));
+  }
+});
+
+test('Gitee quota excludes generated source archives and retains real uploaded ZIP usage', async t => {
+  const { plan } = await fixture(t), transport = http(plan);
+  const historical = sourceArchives('v0.1.0');
+  transport.history([{ id: 1, tag_name: 'v0.1.0', assets: [
+    ...historical.map(asset => ({ ...asset, size: 999_999_999 })),
+    { name: 'v0.1.0.zip', size: 31, browser_download_url: `https://gitee.com/${TARGETS.gitee.repository}/releases/download/v0.1.0/v0.1.0.zip` },
+    { name: 'notes.zip', size: 23, browser_download_url: `https://gitee.com/${TARGETS.gitee.repository}/releases/download/v0.1.0/notes.zip` },
+  ] }]);
+  const result = await publishRelease(plan, transport.options());
+  assert.equal(result.success, true);
+  assert.equal(result.quota.knownHistoricalBytes, 54);
+  assert.equal(result.quota.unknownAttachmentCount, 0);
+  assert.ok(!transport.calls.some(call => call.route.includes('/archive/refs/tags/')));
 });
 
 test('different existing remote bytes are rejected before any mutation', async t => {
@@ -211,6 +305,61 @@ test('Gitee verification follows only the official repository/attachment/CDN cha
   };
   assert.equal((await publishRelease(plan, { ...transport.options(), fetch: routedFetch })).success, true);
   assert.equal(redirects, plan.giteeAssets.length * 2);
+});
+
+test('Gitee signed lowercase CDN redirects verify full content and historical quota without logging signatures', async t => {
+  const { plan } = await fixture(t), transport = http(plan), historyName = 'Old-Package.zip';
+  transport.history([{ id: 1, tag_name: 'v0.1.0', assets: [{ name: historyName,
+    browser_download_url: `https://gitee.com/${TARGETS.gitee.repository}/releases/download/v0.1.0/${historyName}` }] }]);
+  const logs: string[] = [];
+  const result = await publishRelease(plan, { ...transport.options(), fetch: signedGiteeDownloads(transport, { historyName }), log: (line: string) => logs.push(line) });
+  assert.equal(result.success, true);
+  assert.equal(result.quota.knownHistoricalBytes, 57);
+  assert.equal(result.quota.unknownAttachmentCount, 0);
+  assert.ok(plan.giteeAssets.every((asset: any) => logs.includes(`gitee: verified ${asset.name}`)));
+  assert.ok(!logs.join('\n').includes(fakeCdnToken));
+});
+
+test('signed CDN redirect validation rejects extra or duplicate parameters and mismatched URL components', async t => {
+  const { plan } = await fixture(t), first = plan.giteeAssets[0];
+  const mutations: ((url: string, name: string) => string)[] = [
+    url => url + '&extra=1',
+    url => url + '&token=' + fakeCdnToken,
+    (url, name) => url + '&attname=' + encodeURIComponent(name),
+    url => url + '&ts=1700000000',
+    url => { const changed = new URL(url); changed.searchParams.set('attname', 'wrong.bin'); return changed.href; },
+    url => { const changed = new URL(url); changed.searchParams.set('token', 'not-a-signature'); return changed.href; },
+    url => { const changed = new URL(url); changed.searchParams.set('ts', '-1'); return changed.href; },
+    url => { const changed = new URL(url); changed.searchParams.set('ts', '1'.repeat(30)); return changed.href; },
+    url => { const changed = new URL(url); changed.searchParams.delete('attname'); return changed.href; },
+    url => url.replace('/attach_file/123/', '/attach_file/not-numeric/'),
+    (url, name) => url.replace(encodeURIComponent(name.toLowerCase()) + '?', 'wrong.bin?'),
+    (url, name) => url.replace(encodeURIComponent(name.toLowerCase()) + '?', encodeURIComponent(name) + '?'),
+    url => url.replace('foruda.gitee.com', 'evil.example'),
+    url => url.replace('https:', 'http:'),
+    url => url.replace('https://', 'https://user@'),
+    url => url.replace('foruda.gitee.com/', 'foruda.gitee.com:443/'),
+    url => url + '#download',
+    (_url, name) => `https://gitee.com/${TARGETS.gitee.repository}/attach_files/123/download/${encodeURIComponent(name)}?token=${fakeCdnToken}`,
+  ];
+  for (const changeRedirect of mutations) {
+    const transport = http(plan);
+    transport.state.gitee.release = { id: 22, tag_name: plan.tag, name: plan.name, body: plan.body, prerelease: true };
+    transport.state.gitee.files.set(first.name, { bytes: Buffer.alloc(first.size), asset: { name: first.name,
+      browser_download_url: `https://gitee.com/${TARGETS.gitee.repository}/releases/download/${plan.tag}/${first.name}` } });
+    await assert.rejects(publishRelease(plan, { ...transport.options(), fetch: signedGiteeDownloads(transport, { changeRedirect }) }), (error: any) => {
+      assert.match(error.message, /redirected to an unexpected host or path/);
+      assert.ok(!error.message.includes(fakeCdnToken)); return true;
+    });
+    assert.ok(!transport.calls.some(call => ['POST', 'PATCH', 'DELETE'].includes(call.method)));
+  }
+});
+
+test('a valid signed CDN redirect cannot bypass the expected full-file SHA-256', async t => {
+  const { plan } = await fixture(t), transport = http(plan);
+  await assert.rejects(publishRelease(plan, { ...transport.options(), fetch: signedGiteeDownloads(transport, { corrupt: true }) }), /different or incomplete content/);
+  assert.ok(!transport.calls.some(call => call.method === 'PATCH'));
+  assert.equal(transport.state.gitee.release.prerelease, true);
 });
 
 test('a same-host Gitee download URL for the wrong asset is rejected before downloading or mutating', async t => {

@@ -24,6 +24,35 @@ const suffixes = ['mac-universal.dmg', 'windows-x64-setup.exe', 'windows-x64-por
 const fail = message => { throw new Error(message); };
 const same = (actual, expected) => actual.size === expected.size && actual.sha256 === expected.sha256;
 const metadata = item => ({ name: item.name, size: item.size, sha256: item.sha256, ...(item.parts ? { parts: item.parts.map(metadata) } : {}) });
+function giteeUploadedAssets(assets, tag) {
+  // Gitee includes two generated source archives in Release.assets. Only
+  // their exact official names AND URLs identify them; user-uploaded ZIPs
+  // (even with these names) must retain normal strict asset validation.
+  return assets.filter(asset => typeof tag !== 'string' || !['.zip', '.tar.gz'].some(suffix =>
+    asset?.name === tag + suffix && asset?.browser_download_url ===
+      `https://gitee.com/${TARGETS.gitee.repository}/archive/refs/tags/${encodeURIComponent(tag)}${suffix}`));
+}
+export function validGiteeDownloadRedirect(next, name, location) {
+  if (typeof name !== 'string' || next.protocol !== 'https:' || next.username || next.password || next.port || next.hash
+    || /[\\#]/.test(location)) return false;
+  // URL normalizes away an explicit :443; check the raw authority as well.
+  const authority = location.match(/^(?:[a-z][a-z0-9+.-]*:)?\/\/([^/?#]*)/i)?.[1];
+  if (authority !== undefined && authority !== next.hostname) return false;
+  const encodedName = encodeURIComponent(name);
+  if (next.hostname === 'gitee.com') {
+    const prefix = `/${TARGETS.gitee.repository}/attach_files/`;
+    return !next.search && !location.includes('?') && next.pathname.startsWith(prefix)
+      && /^\d+\/download\/[^/]+$/.test(next.pathname.slice(prefix.length)) && next.pathname.endsWith('/' + encodedName);
+  }
+  if (next.hostname !== 'foruda.gitee.com' || !/^\/attach_file\/\d+\/[^/]+$/.test(next.pathname)) return false;
+  if (!next.search) return !location.includes('?') && next.pathname.endsWith('/' + encodedName);
+  // Gitee's signed CDN URLs lowercase the stored filename and preserve the
+  // download name in attname. Keep this narrow; never log the signed URL.
+  const keys = [...next.searchParams.keys()];
+  return keys.length === 3 && new Set(keys).size === 3 && keys.every(key => ['token', 'ts', 'attname'].includes(key))
+    && /^[a-f0-9]{32}$/i.test(next.searchParams.get('token')) && /^[1-9]\d{0,12}$/.test(next.searchParams.get('ts'))
+    && next.searchParams.get('attname') === name && next.pathname.endsWith('/' + encodeURIComponent(name.toLowerCase()));
+}
 function mayPromoteGithubRelease(releases, version) {
   const parse = tag => {
     if (typeof tag !== 'string' || tag.length > 200) return undefined;
@@ -221,7 +250,7 @@ export async function publishRelease(plan, options = {}) {
     const assets = host === 'github' ? await request(host, 'GET', route(host, `/releases/${release.id}/assets?per_page=100`))
       : (await request(host, 'GET', route(host, `/releases/${release.id}`))).assets;
     if (!Array.isArray(assets)) fail(`${host} returned an invalid release asset list.`);
-    return assets;
+    return host === 'gitee' ? giteeUploadedAssets(assets, plan.tag) : assets;
   };
   const downloadDigest = async (host, asset, expected) => {
     let url = asset.browser_download_url;
@@ -234,13 +263,10 @@ export async function publishRelease(plan, options = {}) {
       // Public download requests never carry either publishing credential.
       const response = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(15 * 60000) });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
-        const next = new URL(response.headers.get('location') ?? '', url);
+        const location = response.headers.get('location') ?? '', next = new URL(location, url);
         const allowed = host === 'gitee' ? ['gitee.com', 'foruda.gitee.com'] : ['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'];
-        const giteePath = next.hostname === 'gitee.com'
-          ? new RegExp(`^/${TARGETS.gitee.repository}/attach_files/[0-9]+/download/${expected.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).test(next.pathname)
-          : next.pathname.startsWith('/attach_file/') && next.pathname.endsWith('/' + encodeURIComponent(expected.name)) && /^\/attach_file\/\d+\/[^/]+$/.test(next.pathname);
         if (next.protocol !== 'https:' || next.username || next.password || next.port || next.hash || !allowed.includes(next.hostname)
-          || (host === 'gitee' && (next.search || !giteePath))) fail(`${host} download redirected to an unexpected host or path.`);
+          || (host === 'gitee' && !validGiteeDownloadRedirect(next, expected.name, location))) fail(`${host} download redirected to an unexpected host or path.`);
         await response.body?.cancel(); url = next.href; continue;
       }
       if (!response.ok || !response.body) fail(`${host} download verification failed for ${expected.name}.`);
@@ -251,10 +277,12 @@ export async function publishRelease(plan, options = {}) {
     fail(`${host} download has too many redirects.`);
   };
   const verify = async (host, asset, expected) => {
+    if (host === 'gitee') log(`gitee: verifying ${expected.name}`);
     let actual;
     if (host === 'github' && /^sha256:[a-f0-9]{64}$/i.test(asset.digest ?? '')) actual = { size: asset.size, sha256: asset.digest.slice(7).toLowerCase() };
     else actual = await downloadDigest(host, asset, expected);
     if (!same(actual, expected) || (host === 'github' && asset.state !== 'uploaded')) fail(`${host} already has different or incomplete content named ${expected.name}; refusing to overwrite it.`);
+    if (host === 'gitee') log(`gitee: verified ${expected.name}`);
   };
   const historicalGiteeSize = async asset => {
     if (Number.isSafeInteger(asset.size) && asset.size >= 0) return asset.size;
@@ -267,12 +295,8 @@ export async function publishRelease(plan, options = {}) {
       for (let hop = 0; hop < 5; hop++) {
         const response = await fetcher(url.href, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(15000) });
         if ([301, 302, 303, 307, 308].includes(response.status)) {
-          const next = new URL(response.headers.get('location') ?? '', url);
-          const encodedName = encodeURIComponent(asset.name);
-          const allowedPath = next.hostname === 'gitee.com'
-            ? next.pathname.startsWith(`/${TARGETS.gitee.repository}/attach_files/`) && /\/attach_files\/\d+\/download\/[^/]+$/.test(next.pathname)
-            : next.hostname === 'foruda.gitee.com' && /^\/attach_file\/\d+\/[^/]+$/.test(next.pathname);
-          if (next.protocol !== 'https:' || next.port || next.username || next.password || next.search || next.hash || !allowedPath || !next.pathname.endsWith('/' + encodedName)) return undefined;
+          const location = response.headers.get('location') ?? '', next = new URL(location, url);
+          if (!validGiteeDownloadRedirect(next, asset.name, location)) return undefined;
           url = next; continue;
         }
         const value = response.headers.get('content-length');
@@ -291,7 +315,7 @@ export async function publishRelease(plan, options = {}) {
       if (!Array.isArray(releases)) fail('Gitee returned an invalid release list for attachment quota preflight.');
       for (const release of releases) {
         if (!Array.isArray(release.assets)) fail('Gitee release history did not include its attachment list.');
-        for (const asset of release.assets) {
+        for (const asset of giteeUploadedAssets(release.assets, release.tag_name)) {
           const identity = asset.browser_download_url;
           if (!identity || seen.has(identity)) continue;
           if (++count > 2000) fail('Gitee has too many historical attachments for the bounded quota preflight. Review repository capacity first.');
