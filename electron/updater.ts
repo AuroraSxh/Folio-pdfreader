@@ -89,20 +89,43 @@ function exactURL(value: unknown, expected: string, allowExpectedQuery = false):
 }
 
 /** Redirects start at an exact repository asset; CDN access is never free-form. */
-export function validateDownloadURL(value: string, initial: string): string {
+export function validateDownloadURL(value: string, initial: string, rawLocation = value): string {
   const source = secureURL(initial);
   if (source.origin === 'https://gitee.com') {
     const match = new RegExp(`^/${GITEE_REPOSITORY}/releases/download/[^/]+/([^/]+)$`).exec(source.pathname);
     if (!match || source.search) throw new UpdateFailure('invalid-url');
     const url = secureURL(value), name = match[1];
+    // Inspect the raw Location before URL normalization can hide backslashes,
+    // empty query/fragments, credentials or an explicit default :443 port.
+    const authority = rawLocation.match(/^(?:[a-z][a-z0-9+.-]*:)?\/\/([^/?#]*)/i)?.[1];
+    if (/[\\#]/.test(rawLocation) || (authority !== undefined && authority !== url.hostname)) throw new UpdateFailure('invalid-url');
     if (url.origin === source.origin && url.pathname.startsWith(`/${GITEE_REPOSITORY}/releases/download/`)) return exactURL(value, initial);
     // Public Gitee release redirects verified against oschina/mcp-gitee:
     // repository attach_files -> foruda.gitee.com/attach_file. Preserve the
     // exact artifact name at both hops; never authorize arbitrary CDN paths.
     const attachment = new RegExp(`^/${GITEE_REPOSITORY}/attach_files/([1-9]\\d*)/download/[^/]+$`).exec(url.pathname);
-    if (url.origin === source.origin && attachment) return exactURL(value, `${source.origin}/${GITEE_REPOSITORY}/attach_files/${attachment[1]}/download/${name}`);
+    if (url.origin === source.origin && attachment) {
+      if (rawLocation.includes('?')) throw new UpdateFailure('invalid-url');
+      return exactURL(value, `${source.origin}/${GITEE_REPOSITORY}/attach_files/${attachment[1]}/download/${name}`);
+    }
     const cdn = /^\/attach_file\/([1-9]\d*)\/[^/]+$/.exec(url.pathname);
-    if (url.origin === 'https://foruda.gitee.com' && cdn) return exactURL(value, `${url.origin}/attach_file/${cdn[1]}/${name}`);
+    if (url.origin === 'https://foruda.gitee.com' && cdn) {
+      if (!url.search) {
+        if (rawLocation.includes('?')) throw new UpdateFailure('invalid-url');
+        return exactURL(value, `${url.origin}/attach_file/${cdn[1]}/${name}`);
+      }
+      // Signed Foruda objects lowercase the stored filename but preserve its
+      // original spelling in attname. Match the audited publisher contract;
+      // these ephemeral URLs never enter renderer state, cache or diagnostics.
+      let originalName: string;
+      try { originalName = decodeURIComponent(name); } catch { throw new UpdateFailure('invalid-url'); }
+      const keys = [...url.searchParams.keys()];
+      if (keys.length !== 3 || new Set(keys).size !== 3 || !keys.every(key => ['token', 'ts', 'attname'].includes(key))
+        || !/^[a-f0-9]{32}$/i.test(url.searchParams.get('token') ?? '') || !/^[1-9]\d{0,12}$/.test(url.searchParams.get('ts') ?? '')
+        || url.searchParams.get('attname') !== originalName
+        || url.pathname !== `/attach_file/${cdn[1]}/${encodeURIComponent(originalName.toLowerCase())}`) throw new UpdateFailure('invalid-url');
+      return url.href;
+    }
     throw new UpdateFailure('invalid-url');
   }
   if (source.origin !== 'https://github.com' || !source.pathname.startsWith(`/${REPOSITORY}/releases/download/`) || source.search) throw new UpdateFailure('invalid-url');
@@ -267,7 +290,10 @@ export function createUpdateService(host: UpdateHost): UpdateService {
         if ([301, 302, 303, 307, 308].includes(response.status)) {
           const location = response.headers.get('location');
           if (!location || hop === 5) throw new UpdateFailure('invalid-url');
-          try { next = new URL(location, next).href; } catch { throw new UpdateFailure('invalid-url'); }
+          try {
+            next = new URL(location, next).href;
+            if (asset) validateDownloadURL(next, asset.url, location);
+          } catch { throw new UpdateFailure('invalid-url'); }
           void response.body?.cancel().catch(() => {});
           continue;
         }

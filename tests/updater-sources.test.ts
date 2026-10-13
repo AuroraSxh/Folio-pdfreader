@@ -303,6 +303,69 @@ test('Gitee public attachment and Foruda redirects retain the repository-bound f
   assert.deepEqual(f.calls, [API.gitee, initial, attachment, cdn]); assert.equal(f.opened.length, 0);
 });
 
+const SIGNED_CDN_TOKEN = '0123456789abcdef0123456789abcdef'; // Synthetic fixture, never an API credential.
+function signedGiteeURL(name: string, id = '1776922953017544574') {
+  return `https://foruda.gitee.com/attach_file/${id}/${encodeURIComponent(name.toLowerCase())}?` + new URLSearchParams({ token: SIGNED_CDN_TOKEN, ts: '1700000000', attname: name });
+}
+
+test('signed Foruda URLs require exactly three valid fields and the original attachment name', () => {
+  const initial = release('gitee').assets[0].browser_download_url, name = release('gitee').assets[0].name;
+  const signed = signedGiteeURL(name);
+  assert.equal(validateDownloadURL(signed, initial), signed);
+  const encodedName = 'Pairleaf-0.7.0+Build7-mac-universal.dmg.part001';
+  const encodedInitial = `${REPO.gitee}/releases/download/v0.7.0/${encodeURIComponent(encodedName)}`;
+  assert.equal(validateDownloadURL(signedGiteeURL(encodedName), encodedInitial), signedGiteeURL(encodedName));
+  const changed = (key: string, value: string | null) => { const url = new URL(signed); if (value === null) url.searchParams.delete(key); else url.searchParams.set(key, value); return url.href; };
+  for (const invalid of [
+    signed + '&extra=value', signed + '&token=' + SIGNED_CDN_TOKEN, signed + '&ts=1700000001', signed + '&attname=' + encodeURIComponent(name),
+    changed('token', 'f'.repeat(31)), changed('token', 'g'.repeat(32)), changed('token', null),
+    changed('ts', '0'), changed('ts', '-1'), changed('ts', '1700000000.1'), changed('ts', '1'.repeat(14)), changed('ts', null),
+    changed('attname', name.toLowerCase()), changed('attname', '../' + name), changed('attname', null),
+    signed.replace('/' + name.toLowerCase() + '?', '/' + name + '?'),
+    signed.replace('foruda.gitee.com', 'foruda.gitee.com.evil.test'), signed.replace('foruda.gitee.com', 'user:password@foruda.gitee.com'),
+    signed.replace('foruda.gitee.com', 'foruda.gitee.com:443'), signed.replace('foruda.gitee.com', 'foruda.gitee.com:444'),
+    signed.replace('https:', 'http:'), signed.replace('/attach_file/', '/other/'), signed.replace('1776922953017544574', 'not-an-id'),
+    signed + '#', signed.replace('/attach_file/', '\\attach_file/'),
+    `https://foruda.gitee.com/attach_file/1776922953017544574/${name}?`,
+  ]) assert.throws(() => validateDownloadURL(invalid, initial), /invalid-url/);
+});
+
+test('signed lowercase Gitee download redirects preserve size/hash checks and never expose their token', async t => {
+  for (const payload of ['valid', 'wrong-size', 'wrong-hash'] as const) {
+    const name = release('gitee').assets[0].name, initial = release('gitee').assets[0].browser_download_url;
+    const attachment = `${REPO.gitee}/attach_files/2693158/download/${name}`, cdn = signedGiteeURL(name);
+    const f = await fixture(t, { preference: 'gitee', reply: (url, _init, fallback) => {
+      const destination = url === initial ? attachment : url === attachment ? cdn : undefined;
+      if (destination) { const result = response(null, url, 302); result.headers.set('location', destination); return result; }
+      return url === cdn ? response(payload === 'valid' ? BYTES : payload === 'wrong-size' ? BYTES.subarray(1) : Buffer.alloc(BYTES.length), url) : fallback();
+    } });
+    await f.service.check(); const state = await f.service.download();
+    assert.deepEqual(f.calls, [API.gitee, initial, attachment, cdn]);
+    if (payload === 'valid') {
+      assert.equal(state.phase, 'downloaded'); assert.deepEqual(await fs.readFile(path.join(f.directory, name)), BYTES);
+    } else {
+      assert.equal(state.error, payload === 'wrong-size' ? 'length-mismatch' : 'checksum-mismatch');
+      assert.equal((await f.service.install()).error, 'not-ready');
+    }
+    assert.doesNotMatch(JSON.stringify(f.states), new RegExp(SIGNED_CDN_TOKEN));
+    assert.doesNotMatch(await fs.readFile(path.join(f.directory, 'release-cache.json'), 'utf8'), /foruda\.gitee\.com|0123456789abcdef0123456789abcdef/);
+    assert.ok((await fs.readdir(f.directory)).every(filename => !filename.endsWith('.part'))); assert.equal(f.opened.length, 0);
+  }
+});
+
+test('invalid raw signed redirects are rejected before URL normalization or a CDN fetch', async t => {
+  const name = release('gitee').assets[0].name, initial = release('gitee').assets[0].browser_download_url;
+  const cdn = signedGiteeURL(name);
+  for (const destination of [cdn.replace('foruda.gitee.com', 'foruda.gitee.com:443'), cdn + '#', cdn.replace('/attach_file/', '\\attach_file/'), cdn + '&unknown=1']) {
+    const f = await fixture(t, { preference: 'gitee', reply: (url, _init, fallback) => {
+      if (url === initial) { const result = response(null, url, 302); result.headers.set('location', destination); return result; }
+      return fallback();
+    } });
+    await f.service.check(); assert.equal((await f.service.download()).error, 'invalid-url');
+    assert.deepEqual(f.calls, [API.gitee, initial]); assert.equal(f.opened.length, 0);
+  }
+});
+
 function splitRelease() {
   const raw = release('gitee'), name = raw.assets[0].name;
   const bytes = [BYTES.subarray(0, 17), BYTES.subarray(17, 34), BYTES.subarray(34)];
@@ -313,6 +376,23 @@ function splitRelease() {
   const reply = (url: string, fallback: () => Response) => urls.includes(url) ? response(bytes[urls.indexOf(url)], url) : fallback();
   return { raw, name, bytes, parts, urls, reply };
 }
+
+test('Gitee multipart updates accept individually signed lowercase CDN files and verify the assembled installer', async t => {
+  const split = splitRelease();
+  const attachments = split.parts.map((part, index) => `${REPO.gitee}/attach_files/${2693158 + index}/download/${part.name}`);
+  const signed = split.parts.map((part, index) => signedGiteeURL(part.name, String(1776922953017544 + index)));
+  const f = await fixture(t, { preference: 'gitee', gitee: split.raw, reply: (url, _init, fallback) => {
+    const sourceIndex = split.urls.indexOf(url), attachmentIndex = attachments.indexOf(url), signedIndex = signed.indexOf(url);
+    const destination = sourceIndex >= 0 ? attachments[sourceIndex] : attachmentIndex >= 0 ? signed[attachmentIndex] : undefined;
+    if (destination) { const result = response(null, url, 302); result.headers.set('location', destination); return result; }
+    return signedIndex >= 0 ? response(split.bytes[signedIndex], url) : fallback();
+  } });
+  await f.service.check(); assert.equal((await f.service.download()).phase, 'downloaded');
+  assert.deepEqual(f.calls, [API.gitee, ...split.urls.flatMap((url, index) => [url, attachments[index], signed[index]])]);
+  assert.deepEqual(await fs.readFile(path.join(f.directory, split.name)), BYTES);
+  assert.doesNotMatch(JSON.stringify(f.states), /foruda\.gitee\.com|0123456789abcdef0123456789abcdef/);
+  assert.ok((await fs.readdir(f.directory)).every(name => !name.includes('.part'))); assert.equal(f.opened.length, 0);
+});
 
 test('Gitee pieces stream in order into the original installer and only the assembled verified file can open', async t => {
   const split = splitRelease();
