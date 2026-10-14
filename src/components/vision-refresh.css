@@ -1,0 +1,263 @@
+/* Kimi K3/max image-workflow review, adapted to the actual native dialog and
+   capture markup. Visual rules only: selection coordinates and events belong
+   to PdfPane, image loading and focus management to ImageAttachments. */
+
+.pdf-icon-button:is(.pdf-image-capture-trigger, .pdf-image-page-trigger) {
+  flex: none;
+  color: var(--pdf-muted, var(--muted));
+}
+.pdf-icon-button:is(.pdf-image-capture-trigger, .pdf-image-page-trigger):hover:not(:disabled) {
+  background: var(--soft);
+  color: var(--accent);
+}
+.pdf-icon-button.pdf-image-capture-trigger[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.pdf-icon-button:is(.pdf-image-capture-trigger, .pdf-image-page-trigger):disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+/* No geometry overrides here. The small dual-tone rings stay visible on a
+   white or dark PDF independently of the application's theme. */
+.pdf-image-capture-overlay {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  outline-color: var(--focus);
+}
+.pdf-image-capture-selection {
+  border: 2px solid #315947;
+  border-radius: 2px;
+  background: rgb(65 111 87 / 9%);
+  box-shadow: 0 0 0 1px #fff, inset 0 0 0 1px #fff;
+}
+.pdf-image-capture-actions {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 8px 11px;
+  border-color: var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 2px 8px #18251714;
+  font-family: var(--font-ui);
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  line-height: 1.5;
+}
+.pdf-image-capture-actions > span {
+  flex: 1 1 150px;
+  overflow-wrap: anywhere;
+}
+.pdf-image-capture-actions.is-rendering { border-color: var(--focus); }
+.pdf-image-capture-actions > button {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--text);
+}
+.pdf-image-capture-actions > button:hover { border-color: var(--accent); }
+.pdf-image-capture-actions > button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Drafts remain one row even with three images. Their local horizontal scroll
+   never increases the fixed floating panel's width or adds rows to composer. */
+.fl-image-attachments { color: var(--text); }
+.fl-image-attachments > header {
+  gap: 4px 7px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.5;
+}
+.fl-image-attachments > header > svg { flex: none; color: var(--accent); }
+.fl-image-attachments > header > strong { font-weight: 600; }
+.fl-image-attachments > header > span {
+  color: var(--muted);
+  font-size: calc(10px * var(--ui-font-scale, 1));
+}
+.fl-image-attachments:is([data-kind="draft"], [data-kind="pending"]) .fl-image-grid {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: 120px;
+  justify-content: start;
+  max-width: 100%;
+  gap: 9px;
+  padding: 3px 3px 7px;
+  margin: 4px -3px 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.fl-image-preview-button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  cursor: zoom-in;
+  font: inherit;
+}
+.fl-image-preview-button:hover { border-color: var(--accent); }
+.fl-image-preview-button:active:not(:disabled) { transform: none; }
+.fl-image-preview-button > img {
+  object-fit: contain;
+  background: #fff;
+}
+.fl-image-attachments:is([data-kind="draft"], [data-kind="pending"]) .fl-image-preview-button {
+  height: 76px;
+  min-height: 76px;
+  aspect-ratio: auto;
+}
+.fl-image-card figcaption {
+  padding-top: 4px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.5;
+}
+.fl-image-name { color: var(--text); }
+.fl-image-source {
+  min-height: 28px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  line-height: 1.5;
+  cursor: pointer;
+}
+.fl-image-source:hover:not(:disabled) > span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.fl-image-source:disabled { color: var(--muted); opacity: 1; cursor: default; }
+.fl-image-source > small { font-size: inherit; color: var(--destructive); }
+.fl-image-remove {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.fl-image-remove:hover {
+  border-color: var(--destructive);
+  background: var(--destructive-soft);
+  color: var(--destructive);
+}
+.fl-image-card[data-image-state]:not([data-image-state="loaded"]) .fl-image-preview-button {
+  border-style: dashed;
+  background: var(--soft);
+}
+.fl-image-placeholder {
+  color: var(--muted);
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.fl-image-placeholder > svg { flex: none; }
+
+/* Billing and capability information must remain actual readable text, not
+   disappear into an icon, a tooltip, a clamp or a hover-only interaction. */
+.fl-image-notice {
+  display: block;
+  margin: 7px 0 9px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--muted);
+  border-radius: 7px;
+  background: var(--soft);
+  color: var(--text);
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.6;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.fl-image-notice[data-status="supported"] { border-left-color: var(--accent); }
+.fl-image-notice[data-status="unsupported"] {
+  border-left-color: var(--destructive);
+  background: var(--destructive-soft);
+}
+.fl-image-notice > button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  max-width: 100%;
+  margin: 4px 0 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+.fl-image-notice > button:hover { border-color: var(--accent); }
+
+/* This dialog is portaled to body; root variables also give it the correct
+   dark theme and text scale without relying on assistant-scoped --fl-* vars. */
+.fl-image-dialog {
+  max-width: min(calc(100vw - 32px), 1200px);
+  max-height: calc(100dvh - 32px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 12px 40px #0003;
+  font-family: var(--font-ui);
+  font-size: calc(13px * var(--ui-font-scale, 1));
+  line-height: 1.5;
+}
+.fl-image-dialog::backdrop { background: rgb(26 33 29 / 55%); }
+.fl-image-dialog-content {
+  max-height: calc(100dvh - 36px);
+  min-width: min(360px, calc(100vw - 36px));
+}
+.fl-image-dialog header {
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.fl-image-dialog header h3 {
+  min-width: 0;
+  font-size: calc(14px * var(--ui-font-scale, 1));
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.fl-image-preview-close {
+  flex: none;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--soft);
+  color: var(--text);
+  cursor: pointer;
+}
+.fl-image-preview-close:hover { border-color: var(--line); color: var(--accent); }
+.fl-image-preview-canvas { background: var(--app-bg); padding: 8px; }
+.fl-image-preview-canvas > img { background: #fff; }
+.fl-image-dialog footer {
+  gap: 5px 12px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: calc(11px * var(--ui-font-scale, 1));
+}
+.fl-image-dialog footer > span { flex: 1 1 160px; }
+.fl-image-dialog footer .fl-image-source { flex: 0 1 auto; }
+
+:is(.fl-image-preview-button, .fl-image-remove, .fl-image-source,
+    .fl-image-notice > button, .fl-image-preview-close):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .pdf-image-capture-selection { border-color: Highlight; background: transparent; box-shadow: none; }
+  .pdf-image-capture-overlay { outline-color: Highlight; }
+  .fl-image-preview-button, .fl-image-remove, .fl-image-notice, .fl-image-dialog { border-color: CanvasText; }
+}

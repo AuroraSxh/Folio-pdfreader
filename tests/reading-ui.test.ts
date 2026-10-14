@@ -101,12 +101,12 @@ test('a quote from a removed or different-workspace document is reported unavail
   assert.deepEqual(retry.documentIds, ['paper']);
 });
 
-type Renderer = { ReadingCoverage: ComponentType<{ report?: ReadingReport }>; ReadingProgress: ComponentType<{ progress?: ChatEvent['progress'] }>; WebSearchSources: ComponentType<{ result?: WebSearchResult; onError: (error: string) => void }>; visibleWebSearchResult: (input: unknown) => WebSearchResult | null; I18nProvider: ComponentType<{ language: 'en' | 'zh-CN'; children?: ReactNode }> };
+type Renderer = { ReadingCoverage: ComponentType<{ report?: ReadingReport }>; ReadingProgress: ComponentType<{ progress?: ChatEvent['progress'] }>; WebSearchSources: ComponentType<{ result?: WebSearchResult; onError: (error: string) => void }>; WebSearchSourceDetails: ComponentType<{ result: WebSearchResult; onError: (error: string) => void }>; visibleWebSearchResult: (input: unknown) => WebSearchResult | null; I18nProvider: ComponentType<{ language: 'en' | 'zh-CN'; children?: ReactNode }> };
 let ui: Renderer;
 before(async () => {
   // Bundle CSS away for server rendering; React and the real translation context
   // stay shared. This needs neither a browser process nor a listening socket.
-  const result = await build({ stdin: { contents: "export { ReadingCoverage, ReadingProgress } from './src/components/ReadingCoverage'; export { WebSearchSources, visibleWebSearchResult } from './src/components/WebSearchSources'; export { I18nProvider } from './src/i18n';", resolveDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), loader: 'tsx' }, bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external', loader: { '.css': 'empty' }, logLevel: 'silent' });
+  const result = await build({ stdin: { contents: "export { ReadingCoverage, ReadingProgress } from './src/components/ReadingCoverage'; export { WebSearchSources, WebSearchSourceDetails, visibleWebSearchResult } from './src/components/WebSearchSources'; export { I18nProvider } from './src/i18n';", resolveDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), loader: 'tsx' }, bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external', loader: { '.css': 'empty' }, logLevel: 'silent' });
   const module = { exports: {} };
   new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
   ui = module.exports as Renderer;
@@ -149,18 +149,28 @@ test('selection-only answers show unknown totals instead of dropping their repor
 
 const searchResult: WebSearchResult = { query: 'Related studies', searchedAt: Date.UTC(2026, 9, 13), sources: [{ title: 'Study <title>', url: 'https://example.org/paper', snippet: 'Evidence & context', publishedAt: '2026-09-20' }] };
 const renderSearch = (result: unknown, language: 'en' | 'zh-CN' = 'en') => renderToStaticMarkup(createElement(ui.I18nProvider, { language }, createElement(ui.WebSearchSources, { result: result as WebSearchResult, onError: () => {} })));
+const renderSearchDetails = (result: unknown, language: 'en' | 'zh-CN' = 'en') => renderToStaticMarkup(createElement(ui.I18nProvider, { language }, createElement(ui.WebSearchSourceDetails, { result: result as WebSearchResult, onError: () => {} })));
 
-test('web sources render separate accessible bilingual links, dates, and escaped snippets without fetching favicons', () => {
+test('web sources start collapsed and mount no links, titles, snippets or search query until opened', () => {
   const english = renderSearch(searchResult);
   assert.match(english, /aria-label="Web sources"/);
+  assert.match(english, /<details><summary aria-expanded="false"/);
+  assert.match(english, /fl-web-source-count">1<\/span>/);
+  assert.doesNotMatch(english, /href=|example\.org|Study|Evidence|Related studies|fl-web-source-list/);
+  assert.doesNotMatch(english, /<img|<iframe/);
+  const chinese = renderSearch(searchResult, 'zh-CN');
+  assert.match(chinese, /aria-label="网页来源"/);
+});
+
+test('expanded web source content renders bilingual links, dates and safely escaped plain text', () => {
+  const english = renderSearchDetails(searchResult);
   assert.match(english, /href="https:\/\/example\.org\/paper"/);
   assert.match(english, /Study &lt;title&gt;/);
   assert.match(english, /Evidence &amp; context/);
   assert.match(english, /example\.org/);
   assert.match(english, /Searched/);
   assert.doesNotMatch(english, /<img|<iframe/);
-  const chinese = renderSearch(searchResult, 'zh-CN');
-  assert.match(chinese, /aria-label="网页来源"/);
+  const chinese = renderSearchDetails(searchResult, 'zh-CN');
   assert.match(chinese, /搜索：Related studies/);
   assert.match(chinese, /搜索于/);
 });
@@ -179,14 +189,15 @@ test('imported web source data cannot create unsafe links, duplicates, invalid d
   assert.equal(safe.sources.length, 2);
   assert.equal(safe.sources[1].title, 'example.net');
   assert.equal(safe.sources[1].publishedAt, undefined);
-  const html = renderSearch(input);
+  const html = renderSearchDetails(input);
   assert.doesNotMatch(html, /Unsafe JS|Local file|Private service|Credentials|javascript:|file:|Invalid Date/);
   assert.equal(renderSearch({ ...searchResult, sources: null }), '');
   assert.equal(renderSearch({ ...searchResult, searchedAt: Number.NaN }), '');
 });
 
 test('a completed empty search is stated honestly and absent search metadata creates no source card', () => {
-  assert.match(renderSearch({ ...searchResult, sources: [] }), /no usable web sources/);
-  assert.match(renderSearch({ ...searchResult, sources: [] }, 'zh-CN'), /没有返回可用的网页来源/);
+  assert.match(renderSearch({ ...searchResult, sources: [] }), /fl-web-source-count">0<\/span>/);
+  assert.match(renderSearchDetails({ ...searchResult, sources: [] }), /no usable web sources/);
+  assert.match(renderSearchDetails({ ...searchResult, sources: [] }, 'zh-CN'), /没有返回可用的网页来源/);
   assert.equal(renderSearch(undefined), '');
 });

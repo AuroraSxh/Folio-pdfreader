@@ -1,0 +1,33 @@
+.fl-web-citation { display: inline; }
+.fl-assistant .fl-web-citation-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  margin: 0 3px; padding: 1px 7px; border: 1px solid transparent; border-radius: 5px;
+  vertical-align: baseline; background: var(--fl-soft); color: var(--fl-green);
+  font: inherit; font-size: calc(11px * var(--ui-font-scale, 1)); line-height: 1.6;
+  text-decoration: none; cursor: pointer;
+}
+.fl-assistant .fl-web-citation-chip:hover,
+.fl-assistant .fl-web-citation-chip[aria-expanded="true"] { background: var(--fl-green-soft); border-color: var(--fl-border); }
+.fl-web-citation-number { flex: none; font-variant-numeric: tabular-nums; }
+.fl-web-citation-domain { min-width: 0; max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-web-citation-popover {
+  position: fixed; inset: auto; margin: 0; padding: 14px; box-sizing: border-box;
+  border: 1px solid var(--fl-border, #e6e7df); border-radius: 12px;
+  background: var(--panel, var(--fl-surface, #fff)); color: var(--fl-ink, #30372f);
+  box-shadow: 0 12px 35px #14281b24; overflow: auto; overscroll-behavior: contain;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  font-size: calc(12px * var(--ui-font-scale, 1)); line-height: 1.6;
+  overflow-wrap: anywhere; white-space: normal; text-align: left;
+}
+.fl-web-citation-popover:popover-open { display: flex; flex-direction: column; gap: 9px; }
+.fl-web-citation-popover::backdrop { background: transparent; }
+.fl-web-citation-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--fl-muted); font-size: calc(10px * var(--ui-font-scale, 1)); }
+.fl-web-citation-heading button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--fl-muted); cursor: pointer; }
+.fl-web-citation-heading button:hover { background: var(--fl-soft); color: var(--fl-ink); }
+.fl-web-citation-title { display: block; font-size: calc(13px * var(--ui-font-scale, 1)); font-weight: 600; }
+.fl-web-citation-meta { display: block; color: var(--fl-muted); font-size: calc(10px * var(--ui-font-scale, 1)); }
+.fl-web-citation-snippet { display: block; color: var(--fl-ink); }
+.fl-web-citation-popover .fl-web-citation-open { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; min-width: 0; padding-top: 10px; border-top: 1px solid var(--fl-border); color: var(--fl-green); text-decoration: none; }
+.fl-web-citation-open small { display: block; width: 100%; color: var(--fl-muted); font-size: calc(9px * var(--ui-font-scale, 1)); overflow-wrap: anywhere; }
+.fl-web-citation-popover .fl-web-citation-open:hover > span { text-decoration: underline; text-underline-offset: 3px; }
+.fl-web-citation-chip:focus-visible,.fl-web-citation-heading button:focus-visible,.fl-web-citation-open:focus-visible { outline: 2px solid var(--fl-green, #315447); outline-offset: 3px; }

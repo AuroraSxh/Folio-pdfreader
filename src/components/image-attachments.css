@@ -1,0 +1,25 @@
+/* Structural rules only; vision-refresh.css owns the visual treatment. */
+.fl-image-attachments { min-width: 0; width: 100%; max-width: 100%; margin: 8px 0; }
+.fl-image-attachments > header { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; }
+.fl-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 7px; }
+.fl-image-card { position: relative; min-width: 0; margin: 0; }
+.fl-image-preview-button { display: grid; place-items: center; width: 100%; min-height: 72px; aspect-ratio: 3 / 2; padding: 0; overflow: hidden; }
+.fl-image-preview-button > img { display: block; max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; }
+.fl-image-card figcaption { min-width: 0; }
+.fl-image-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-image-source { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; text-align: left; }
+.fl-image-source > svg { flex: none; }
+.fl-image-source > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fl-image-source > small { flex: none; }
+.fl-image-remove { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; min-width: 28px; min-height: 28px; }
+.fl-image-placeholder { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; }
+.fl-image-notice { overflow-wrap: anywhere; }
+.fl-image-dialog { max-width: min(90vw, 1200px); max-height: 90vh; padding: 0; }
+.fl-image-dialog-content { display: flex; flex-direction: column; max-height: 88vh; min-width: min(320px, 88vw); }
+.fl-image-dialog header, .fl-image-dialog footer { display: flex; align-items: center; gap: 12px; padding: 12px 16px; flex: none; }
+.fl-image-dialog header h3 { margin: 0; flex: 1; }
+.fl-image-preview-close { display: grid; place-items: center; min-width: 34px; min-height: 34px; }
+.fl-image-preview-canvas { display: grid; place-items: center; min-height: 0; overflow: auto; flex: 1; }
+.fl-image-preview-canvas > img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+.fl-image-dialog footer { flex-wrap: wrap; min-width: 0; }
+.fl-image-dialog footer > span { overflow-wrap: anywhere; min-width: 0; }

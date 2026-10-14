@@ -1,34 +1,29 @@
-import { memo, useMemo } from 'react';
-import { ExternalLink, Globe } from 'lucide-react';
+import { memo, useMemo, useState } from 'react';
+import { ChevronDown, ExternalLink, Globe } from 'lucide-react';
 import { safeWebSourceUrl, type WebSearchResult } from '../../shared/web-search';
+import { visibleWebSearchResult } from './web-source-utils';
 import { useI18n } from '../i18n';
 import './web-search-sources.css';
 
-/** Imported conversation data need the same link checks as fresh results. */
-export function visibleWebSearchResult(input: unknown): WebSearchResult | null {
-  if (!input || typeof input !== 'object') return null;
-  const value = input as Partial<WebSearchResult>;
-  if (typeof value.query !== 'string' || !Array.isArray(value.sources) || typeof value.searchedAt !== 'number' || !Number.isFinite(new Date(value.searchedAt).getTime())) return null;
-  const sources: WebSearchResult['sources'] = [];
-  const seen = new Set<string>();
-  for (const candidate of value.sources.slice(0, 30)) {
-    if (!candidate || typeof candidate !== 'object') continue;
-    const url = safeWebSourceUrl(candidate.url);
-    if (!url || seen.has(url)) continue;
-    seen.add(url);
-    sources.push({
-      url,
-      title: typeof candidate.title === 'string' && candidate.title.trim() ? candidate.title.trim().slice(0, 400) : new URL(url).hostname,
-      snippet: typeof candidate.snippet === 'string' ? candidate.snippet.slice(0, 2000) : '',
-      ...(typeof candidate.publishedAt === 'string' && Number.isFinite(new Date(candidate.publishedAt).getTime()) ? { publishedAt: candidate.publishedAt } : {}),
-    });
-  }
-  return { query: value.query.slice(0, 1000), searchedAt: value.searchedAt, sources };
-}
+export { visibleWebSearchResult } from './web-source-utils';
 
 export const WebSearchSources = memo(function WebSearchSources({ result: input, onError }: {
   result?: WebSearchResult; onError: (message: string) => void;
 }) {
+  const { t } = useI18n();
+  const result = useMemo(() => visibleWebSearchResult(input), [input]);
+  const [expanded, setExpanded] = useState(false);
+  if (!result) return null;
+  return <section className="fl-web-sources" aria-label={t('网页来源', 'Web sources')}>
+    <details open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
+      <summary aria-expanded={expanded}><Globe size={12} aria-hidden="true" /><strong>{t('网页来源', 'Web sources')}</strong><span className="fl-web-source-count">{result.sources.length}</span><ChevronDown size={12} className="fl-web-sources-chevron" aria-hidden="true" /></summary>
+      {expanded && <WebSearchSourceDetails result={result} onError={onError} />}
+    </details>
+  </section>;
+});
+
+/** Mounted only by an expanded disclosure; useful independently of chat layout. */
+export function WebSearchSourceDetails({ result: input, onError }: { result: WebSearchResult; onError: (message: string) => void }) {
   const { t, locale } = useI18n();
   const result = useMemo(() => visibleWebSearchResult(input), [input]);
   if (!result) return null;
@@ -37,8 +32,7 @@ export const WebSearchSources = memo(function WebSearchSources({ result: input, 
     if (!safe) return;
     void window.folio.openExternal(safe).catch(cause => onError(cause instanceof Error ? cause.message : String(cause)));
   };
-  return <section className="fl-web-sources" aria-label={t('网页来源', 'Web sources')}>
-    <header><Globe size={12} /><strong>{t('网页来源', 'Web sources')}</strong><span>{result.sources.length}</span></header>
+  return <div className="fl-web-source-details">
     {result.query && <p className="fl-web-query" title={result.query}>{t('搜索：{query}', 'Search: {query}', { query: result.query })}</p>}
     {result.sources.length ? <ol className="fl-web-source-list">{result.sources.map((source, index) => <li key={source.url}>
       <a href={source.url} title={source.url} rel="noreferrer noopener" onClick={event => { event.preventDefault(); open(source.url); }} onAuxClick={event => { if (event.button === 1) { event.preventDefault(); open(source.url); } }}>
@@ -47,5 +41,5 @@ export const WebSearchSources = memo(function WebSearchSources({ result: input, 
       {source.snippet && <p>{source.snippet}</p>}
     </li>)}</ol> : <p className="fl-web-empty">{t('本次搜索没有返回可用的网页来源。', 'This search returned no usable web sources.')}</p>}
     <footer>{t('搜索于 {date} · 网页内容可能更新', 'Searched {date} · Web content can change', { date: new Date(result.searchedAt).toLocaleDateString(locale) })}</footer>
-  </section>;
-});
+  </div>;
+}

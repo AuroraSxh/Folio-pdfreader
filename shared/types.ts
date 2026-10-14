@@ -1,7 +1,9 @@
 import type { ReadingMode, ReadingReport } from './reading';
 import type { WebSearchResult } from './web-search';
+import type { DraftChatImage, StoredChatImage } from './images';
+export type { DraftChatImage, StoredChatImage, ChatImageSource } from './images';
 export type ProviderId = 'deepseek' | 'openai' | 'anthropic' | 'custom';
-export interface ProviderConfig { id: ProviderId; apiKey?: string; hasKey?: boolean; baseURL: string; model: string; maxTokens: number; thinking?: boolean; reasoningEffort?: 'low'|'high'|'max' }
+export interface ProviderConfig { id: ProviderId; apiKey?: string; hasKey?: boolean; baseURL: string; model: string; maxTokens: number; thinking?: boolean; reasoningEffort?: 'low'|'high'|'max'; vision?: 'auto'|'enabled'|'disabled' }
 export interface Settings {
   language: import('./i18n').Language;
   autoCheckUpdates: boolean;
@@ -31,7 +33,7 @@ export interface PaperDocument {
 }
 export type MemoryType = 'finding' | 'interpretation' | 'question' | 'user-note' | 'cross-ref';
 export interface Memory { id: string; type: MemoryType; title: string; body: string; tags: string[]; createdAt: number; source: 'ai' | 'user'; sourceTurnIds?: string[] }
-export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice'; turnId?: string; reading?: ReadingReport; webSearch?: WebSearchResult }
+export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; createdAt: number; provider?: string; model?: string; interrupted?: boolean; source?: 'voice'; turnId?: string; reading?: ReadingReport; webSearch?: WebSearchResult; images?: StoredChatImage[] }
 export interface Conversation { id: string; title: string; createdAt: number; messages: ChatMessage[] }
 export interface Summary { content: string; provider: string; model: string; createdAt: number; sourceTurnId?: string; reading?: ReadingReport }
 export interface PaneSwapExpected { leftId: string; rightId: string; direction?: 'vertical'|'horizontal'; paneRevision?: number }
@@ -46,7 +48,7 @@ export interface Workspace {
 }
 export interface TextSelection { documentId: string; documentName: string; page: number; text: string; rects: number[][] }
 export interface DocumentIndex { pageCount: number; outline: OutlineItem[]; title?: string; authors?: string; pages: string[] }
-export interface ChatRequest { requestId: string; workspaceId: string; conversationId: string; prompt: string; kind: 'chat' | 'summary'; documentIds: string[]; selection?: TextSelection; source?: 'voice'; voiceLocale?: 'zh-CN' | 'en-US'; readingMode?: ReadingMode; webSearch?: boolean }
+export interface ChatRequest { requestId: string; workspaceId: string; conversationId: string; prompt: string; kind: 'chat' | 'summary'; documentIds: string[]; selection?: TextSelection; source?: 'voice'; voiceLocale?: 'zh-CN' | 'en-US'; readingMode?: ReadingMode; webSearch?: boolean; images?: DraftChatImage[] }
 export interface ChatEvent { requestId: string; workspaceId: string; type: 'delta' | 'done' | 'error' | 'memory' | 'status'; text?: string; workspace?: Workspace; interrupted?: boolean; reading?: ReadingReport; webSearch?: WebSearchResult; progress?: { phase: 'searching'|'reading'|'synthesizing'; completed: number; total: number; cached?: number } }
 export interface ExportResult { path: string; overwritten?: boolean }
 export interface RemovedWorkspace { id: string; title: string; authors: string; tags: string[]; documentCount: number; removedAt: number }
@@ -72,6 +74,8 @@ export interface FolioAPI {
   swapPanes(workspaceId:string,expected:PaneSwapExpected):Promise<Workspace>;
   removeDocument(workspaceId: string, documentId: string): Promise<Workspace>;
   readDocument(workspaceId: string, documentId: string): Promise<Uint8Array>;
+  readChatImage(workspaceId: string, imageId: string): Promise<string>;
+  setDocumentPageCount(workspaceId: string, documentId: string, pageCount: number): Promise<Workspace>;
   indexDocument(workspaceId: string, documentId: string, index: DocumentIndex): Promise<Workspace>;
   exportPdf(workspaceId: string, documentId: string): Promise<ExportResult | null>;
   printPdf(workspaceId: string, documentId: string): Promise<void>;

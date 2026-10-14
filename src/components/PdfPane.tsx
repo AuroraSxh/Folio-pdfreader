@@ -2,20 +2,23 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyn
 import { createPortal } from 'react-dom';
 import { AnnotationEditorType, AnnotationMode, PasswordResponses, type PDFDocumentProxy, type PDFDocumentLoadingTask } from 'pdfjs-dist';
 import { EventBus, PDFViewer, PDFLinkService, PDFFindController, LinkTarget } from 'pdfjs-dist/web/pdf_viewer.mjs';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookmarkPlus, Check, ChevronDown, ChevronLeft, ChevronRight, Columns2, Copy, Download, FileText, Highlighter, ListTree, LoaderCircle, LockKeyhole, MessageSquare, Minus, MousePointer2, MoveVertical, PanelLeft, Plus, Printer, RotateCw, Rows2, Search, Settings2, Sparkles, StickyNote, Strikethrough, Trash2, Underline, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookmarkPlus, Check, ChevronDown, ChevronLeft, ChevronRight, Columns2, Copy, Download, FileImage, FileText, Highlighter, ListTree, LoaderCircle, LockKeyhole, MessageSquare, Minus, MousePointer2, MoveVertical, PanelLeft, Plus, Printer, RotateCw, Rows2, ScanLine, Search, Settings2, Sparkles, StickyNote, Strikethrough, Trash2, Underline, X } from 'lucide-react';
 import type { Annotation, DocumentIndex, OutlineItem, PaperDocument, Settings, TextSelection, ViewState } from '../../shared/types';
+import type { DraftChatImage } from '../../shared/images';
 import { changeOutline, locateOutline } from '../pdf/outline';
 import { hasPdfIndex, loadPdf, readSharedPdfIndex } from '../pdf/documentIndex';
 import { markupRect, viewportRectPercent, type MarkupKind } from '../pdf/markupGeometry';
 import { sourceQuoteClientRects } from '../pdf/sourceHighlight';
 import { ownsCommentSelection, placeCommentPopover, projectCommentRect, type CommentBox, type CommentSelectionOwner } from '../pdf/commentPopover';
 import { beginAnnotationWrite, isAnnotationSaving, subscribeAnnotationWrites } from '../pdf/annotationWrites';
+import { capturePoint, capturePdfRect, renderPdfImage, type CapturePoint, type CaptureRect, type CaptureViewport } from '../pdf/imageCapture';
 import { hasPrimaryModifier, shortcutLabel } from '../platform';
 import { useI18n } from '../i18n';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdf-pane.css';
 import './source-highlight.css';
 import './comment-popover.css';
+import './pdf-image-capture.css';
 
 interface PdfPaneProps {
   workspaceId: string;
@@ -32,13 +35,21 @@ interface PdfPaneProps {
   onActivate: () => void;
   onDocumentPatch: (patch: Partial<Pick<PaperDocument, 'name' | 'role' | 'outline' | 'annotations' | 'view'>>) => void | Promise<void>;
   onIndexed: (index: DocumentIndex) => void;
+  onPageCountReady?: (count: number) => void | Promise<void>;
   onSelection: (selection: TextSelection) => void;
   onAsk: (selection: TextSelection) => void;
+  onAskImage?: (image: DraftChatImage) => void;
+  imageContextKey?: string;
   onSplit?: (direction: 'vertical' | 'horizontal' | 'none') => void;
   onError: (message: string) => void;
 }
 
 interface SelectionBundle extends CommentSelectionOwner { parts: TextSelection[]; text: string }
+interface ImageCaptureSession {
+  workspaceId: string; documentId: string; documentName: string; contextKey?: string;
+  page: number; rotation: number; viewport: CaptureViewport; element: HTMLElement;
+  onAskImage: (image: DraftChatImage) => void;
+}
 type SidebarTab = 'outline' | 'thumbnails' | 'annotations';
 type SourceStatus = 'locating' | 'matched' | 'page-only' | 'unmatched' | 'invalid';
 interface SourceLocation {
@@ -193,6 +204,132 @@ export default function PdfPane(props: PdfPaneProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string; selection: SelectionBundle | null; annotationId: string | null } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [imageCapture, setImageCapture] = useState<ImageCaptureSession | null>(null);
+  const imageCaptureRef = useRef<ImageCaptureSession | null>(null);
+  const imageRenderRef = useRef<AbortController | null>(null);
+  const [imageCapturing, setImageCapturing] = useState(false);
+  const cancelImageCapture = useCallback(() => {
+    imageCaptureRef.current = null;
+    imageRenderRef.current?.abort(); imageRenderRef.current = null;
+    if (mounted.current) { setImageCapture(null); setImageCapturing(false); }
+  }, []);
+
+  const currentImageSession = useCallback((): ImageCaptureSession | null => {
+    const current = latest.current, viewer = viewerRef.current;
+    if (!current.onAskImage || !viewer?.pdfDocument || !viewer.pagesCount) return null;
+    const page = viewer.currentPageNumber, view = viewer.getPageView(page - 1);
+    if (!view?.viewport || !view.div.isConnected || current.document.pageCount < page) return null;
+    return { workspaceId: current.workspaceId, documentId: current.document.id, documentName: current.document.name,
+      contextKey: current.imageContextKey, page, rotation: view.viewport.rotation, viewport: view.viewport, element: view.div,
+      onAskImage: current.onAskImage };
+  }, []);
+
+  const capturePageImage = useCallback(async (session: ImageCaptureSession, rect?: CaptureRect) => {
+    const viewer = viewerRef.current, pdfDocument = viewer?.pdfDocument;
+    if (!viewer || !pdfDocument) return;
+    const stillCurrent = () => latest.current.workspaceId === session.workspaceId && latest.current.document.id === session.documentId
+      && latest.current.imageContextKey === session.contextKey && viewerRef.current === viewer && viewer.currentPageNumber === session.page;
+    if (!stillCurrent()) return;
+    cancelImageCapture();
+    const abort = new AbortController(); imageRenderRef.current = abort; setImageCapturing(true);
+    try {
+      const pdfPage = await pdfDocument.getPage(session.page);
+      if (abort.signal.aborted || !stillCurrent()) return;
+      const image = await renderPdfImage(pdfPage, { rotation: session.rotation, rect, signal: abort.signal });
+      if (abort.signal.aborted || !mounted.current || !stillCurrent()) return;
+      const extension = image.mimeType === 'image/jpeg' ? 'jpg' : 'png';
+      const name = `${latest.current.t('PDF 图像', 'PDF image')} · ${session.documentName.slice(0, 430)} · p${session.page}${rect ? '-figure' : ''}.${extension}`;
+      session.onAskImage({ dataUrl: image.dataUrl, name, source: { documentId: session.documentId, documentName: session.documentName,
+        page: session.page, ...(rect ? { rect } : {}) } });
+    } catch (error) {
+      if (!abort.signal.aborted && mounted.current && stillCurrent()) latest.current.onError(latest.current.t('无法截取 PDF 图像：{error}', 'Unable to capture the PDF image: {error}', { error: messageOf(error) }));
+    } finally {
+      if (imageRenderRef.current === abort) { imageRenderRef.current = null; if (mounted.current) setImageCapturing(false); }
+    }
+  }, [cancelImageCapture]);
+
+  const beginImageCapture = (wholePage = false) => {
+    if (imageRenderRef.current) return;
+    const session = currentImageSession();
+    if (!session) return;
+    cancelImageCapture(); clearTimeout(captureTimer.current);
+    props.onActivate(); setOptionsOpen(false); setContextMenu(null); setSelection(null); setNewComment(false); setHighlightArmed(false);
+    window.getSelection()?.removeAllRanges();
+    if (wholePage) void capturePageImage(session);
+    else { imageCaptureRef.current = session; setImageCapture(session); }
+  };
+
+  useEffect(() => { cancelImageCapture(); }, [workspaceId, paper.id, props.imageContextKey, cancelImageCapture]);
+  useEffect(() => { if (!active) cancelImageCapture(); }, [active, cancelImageCapture]);
+  useEffect(() => () => { imageRenderRef.current?.abort(); }, []);
+
+  useEffect(() => {
+    if (!imageCapture && !imageCapturing) return;
+    const container = containerRef.current, bus = busRef.current;
+    const events = ['pagechanging', 'scalechanging', 'rotationchanging', 'scrollmodechanged', 'spreadmodechanged'];
+    events.forEach(event => bus?.on(event, cancelImageCapture));
+    container?.addEventListener('scroll', cancelImageCapture, { passive: true });
+    window.addEventListener('resize', cancelImageCapture);
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelImageCapture(); container?.focus({ preventScroll: true }); }
+    };
+    window.addEventListener('keydown', escape, true);
+    const columns = paneRef.current?.closest('.pdf-columns');
+    const layout = new MutationObserver(cancelImageCapture);
+    if (columns) layout.observe(columns, { childList: true, attributes: true, attributeFilter: ['class', 'style'] });
+    return () => {
+      events.forEach(event => bus?.off(event, cancelImageCapture));
+      container?.removeEventListener('scroll', cancelImageCapture); window.removeEventListener('resize', cancelImageCapture);
+      window.removeEventListener('keydown', escape, true); layout.disconnect();
+    };
+  }, [imageCapture, imageCapturing, cancelImageCapture]);
+
+  useEffect(() => {
+    if (!imageCapture) return;
+    const session = imageCapture, layer = window.document.createElement('div'), box = window.document.createElement('div');
+    layer.className = 'pdf-image-capture-overlay'; layer.tabIndex = 0; layer.setAttribute('role', 'region');
+    layer.setAttribute('aria-label', t('拖动框选第 {page} 页内的图表，按 Esc 取消', 'Drag to select a figure on page {page}; press Escape to cancel', { page: session.page }));
+    box.className = 'pdf-image-capture-selection'; box.hidden = true; layer.append(box); session.element.append(layer);
+    const listeners = new AbortController();
+    let drag: { pointerId: number; start: CapturePoint; end: CapturePoint } | null = null;
+    const draw = () => {
+      if (!drag) { box.hidden = true; return; }
+      box.hidden = false;
+      Object.assign(box.style, { left: `${Math.min(drag.start.x, drag.end.x) * 100}%`, top: `${Math.min(drag.start.y, drag.end.y) * 100}%`,
+        width: `${Math.abs(drag.end.x - drag.start.x) * 100}%`, height: `${Math.abs(drag.end.y - drag.start.y) * 100}%` });
+    };
+    layer.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || !event.isPrimary || imageCaptureRef.current !== session) return;
+      const start = capturePoint(event.clientX, event.clientY, layer.getBoundingClientRect());
+      if (!start) return;
+      event.preventDefault(); event.stopPropagation(); layer.setPointerCapture(event.pointerId);
+      drag = { pointerId: event.pointerId, start, end: start }; draw();
+    }, { signal: listeners.signal });
+    layer.addEventListener('pointermove', event => {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const end = capturePoint(event.clientX, event.clientY, layer.getBoundingClientRect());
+      if (end) { event.preventDefault(); drag.end = end; draw(); }
+    }, { signal: listeners.signal });
+    layer.addEventListener('pointerup', event => {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.preventDefault(); event.stopPropagation();
+      const bounds = layer.getBoundingClientRect(), end = capturePoint(event.clientX, event.clientY, bounds);
+      const start = drag.start; drag = null;
+      if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId);
+      if (!end || imageCaptureRef.current !== session || Math.abs(end.x - start.x) * bounds.width < 8 || Math.abs(end.y - start.y) * bounds.height < 8) { draw(); return; }
+      const rect = capturePdfRect(session.viewport, start, end);
+      if (rect) void capturePageImage(session, rect);
+      else cancelImageCapture();
+    }, { signal: listeners.signal });
+    layer.addEventListener('pointercancel', cancelImageCapture, { signal: listeners.signal });
+    layer.addEventListener('lostpointercapture', () => { if (drag) cancelImageCapture(); }, { signal: listeners.signal });
+    layer.addEventListener('contextmenu', event => { event.preventDefault(); event.stopPropagation(); }, { signal: listeners.signal });
+    layer.addEventListener('mousedown', event => event.preventDefault(), { signal: listeners.signal });
+    const observer = new MutationObserver(() => { if (!layer.isConnected) cancelImageCapture(); });
+    observer.observe(session.element, { childList: true });
+    layer.focus({ preventScroll: true });
+    return () => { listeners.abort(); observer.disconnect(); drag = null; layer.remove(); };
+  }, [imageCapture, capturePageImage, cancelImageCapture, t]);
   const cancelComment = useCallback((restoreFocus = true) => {
     setNewComment(false); setSelection(null); setCommentDraft('');
     if (restoreFocus) containerRef.current?.focus({ preventScroll: true });
@@ -249,6 +386,7 @@ export default function PdfPane(props: PdfPaneProps) {
   };
 
   const openContextMenu = (clientX: number, clientY: number, target: EventTarget | null) => {
+    if (imageCaptureRef.current || imageRenderRef.current) return;
     clearTimeout(captureTimer.current);
     props.onActivate();
     const bounds = target instanceof Element && target.closest('.folio-comment-pin')
@@ -706,6 +844,15 @@ export default function PdfPane(props: PdfPaneProps) {
       const loaded = await loadingTask.promise;
       if (disposed) { await loadingTask.destroy(); return; }
       setPasswordRequest(null); setPdf(loaded); setPageCount(loaded.numPages);
+      // Page metadata is available before text extraction. Persist it early so
+      // scanned/long PDFs can supply validated image sources while indexing.
+      const reportPageCount = latest.current.document.pageCount === 0 ? latest.current.onPageCountReady : undefined;
+      if (reportPageCount) {
+        const knownPageCount = loaded.numPages;
+        void Promise.resolve().then(() => reportPageCount(knownPageCount)).catch(error => {
+          if (!disposed) latest.current.onError(latest.current.t('无法保存 PDF 页数：{error}', 'Unable to save the PDF page count: {error}', { error: messageOf(error) }));
+        });
+      }
       linkService.setDocument(loaded);
       viewer.setDocument(loaded);
       // Imported originals are immutable; their durable full-text index remains valid.
@@ -823,10 +970,10 @@ export default function PdfPane(props: PdfPaneProps) {
   };
 
   const captureSelection = (applyArmedMarkup = false) => {
-    if (newComment) return;
+    if (newComment || imageCaptureRef.current || imageRenderRef.current) return;
     clearTimeout(captureTimer.current);
     captureTimer.current = setTimeout(() => {
-      if (!mounted.current) return;
+      if (!mounted.current || imageCaptureRef.current || imageRenderRef.current) return;
       const bundle = readSelection();
       setSelection(bundle); setNewComment(false);
       if (!bundle) return;
@@ -901,7 +1048,8 @@ export default function PdfPane(props: PdfPaneProps) {
   const selectedOutline = outlineSelection ? locateOutline(outline, outlineSelection) : undefined;
   const selectedAnnotation = paper.annotations.find(item => item.id === annotationId);
   const contextAnnotation = paper.annotations.find(item => item.id === contextMenu?.annotationId);
-  const annotationTools = (annotationToolbar !== 'selection' || selection) && <div className={`pdf-selection-tools pdf-annotation-tools-${annotationToolbar}${sharedToolbar ? ' pdf-annotation-tools-shared' : ''}`} role="toolbar" aria-label={t("文字与批注工具", "Text and annotation tools")} aria-busy={annotationBusy} onMouseDown={event => event.preventDefault()}>
+  const captureReady = !!pdf && !status && !failure && !!props.onAskImage && paper.pageCount >= page && !imageCapturing;
+  const annotationTools = !imageCapture && !imageCapturing && (annotationToolbar !== 'selection' || selection) && <div className={`pdf-selection-tools pdf-annotation-tools-${annotationToolbar}${sharedToolbar ? ' pdf-annotation-tools-shared' : ''}`} role="toolbar" aria-label={t("文字与批注工具", "Text and annotation tools")} aria-busy={annotationBusy} onMouseDown={event => event.preventDefault()}>
       <button title={t("选择和复制文字，退出文字标记模式", "Select and copy text; exit markup mode")} aria-label={t("选择文字", "Select text")} aria-pressed={!highlightArmed} className={!highlightArmed ? 'is-on' : ''} disabled={!pdf} onClick={() => setHighlightArmed(false)}><MousePointer2 size={15} /></button>
       <div className="pdf-highlight-colors" role="group" aria-label={t("标记颜色", "Markup color")}>{COLORS.map((color, colorIndex) => <button key={color} style={{ backgroundColor: color }} className={highlightColor === color ? 'is-chosen' : ''} onClick={() => setHighlightColor(color)} title={t('高亮颜色 {color}', '{name} markup ({color})', { color, name: t(COLOR_NAMES[colorIndex][0], COLOR_NAMES[colorIndex][1]) })} aria-label={t('高亮颜色 {color}', '{name} markup ({color})', { color, name: t(COLOR_NAMES[colorIndex][0], COLOR_NAMES[colorIndex][1]) })} aria-pressed={highlightColor === color} />)}</div>
       {MARKUP_TOOLS.map(({ kind, label, Icon }) => {
@@ -938,6 +1086,8 @@ export default function PdfPane(props: PdfPaneProps) {
       <button className="pdf-icon-button pdf-zoom-step" title={t("放大此阅读区", "Zoom in in this pane")} aria-label={t("放大", "Zoom in")} disabled={!pdf} onClick={() => viewerRef.current?.increaseScale()}><Plus size={15} /></button>
       </div>
       <div className="pdf-toolbar-spacer" />
+      <button className={`pdf-icon-button pdf-image-capture-trigger ${imageCapture ? 'is-on' : ''}`} disabled={!captureReady} title={t('框选图表问 AI', 'Select a figure for AI')} aria-label={t('框选图表问 AI', 'Select a figure for AI')} aria-pressed={!!imageCapture} onClick={() => imageCapture ? cancelImageCapture() : beginImageCapture()}><ScanLine size={17} /></button>
+      <button className="pdf-icon-button pdf-image-page-trigger" disabled={!captureReady} title={t('发送当前页给 AI', 'Send current page to AI')} aria-label={t('发送当前页给 AI', 'Send current page to AI')} onClick={() => beginImageCapture(true)}><FileImage size={17} /></button>
       <button className={`pdf-icon-button ${optionsOpen ? 'is-on' : ''}`} title={t("阅读模式与导出", "Reading modes and export")} aria-label={t("阅读模式与导出", "Reading modes and export")} aria-expanded={optionsOpen} onClick={() => setOptionsOpen(!optionsOpen)}><Settings2 size={17} /></button>
     {optionsOpen && <div className="pdf-options">
       <div className="pdf-options-title"><strong>{t("阅读设置", "Reading settings")}</strong><button className="pdf-icon-button" aria-label={t("关闭阅读设置", "Close reading settings")} onClick={() => setOptionsOpen(false)}><X size={14} /></button></div>
@@ -945,6 +1095,9 @@ export default function PdfPane(props: PdfPaneProps) {
       <label>{t("页面排列", "Page layout")}<select aria-label={t("页面排列", "Page layout")} value={spreadMode} disabled={!pdf || scrollMode === 1} onChange={event => { if (viewerRef.current) viewerRef.current.spreadMode = Number(event.target.value); }}><option value={0}>{t("单栏", "Single page")}</option><option value={1}>{t("双页", "Two pages")}</option><option value={2}>{t("双页 · 独立封面", "Two pages, separate cover")}</option></select></label>
       <label>{t("自定缩放", "Custom zoom")}<form onSubmit={event => { event.preventDefault(); const input = event.currentTarget.elements.namedItem('zoom') as HTMLInputElement; const zoom = Number(input.value); if (viewerRef.current && Number.isFinite(zoom)) viewerRef.current.currentScaleValue = String(clamp(zoom, 10, 1000) / 100); }}><input key={scalePercent} name="zoom" type="number" min="10" max="1000" defaultValue={scalePercent} aria-label={t("自定缩放百分比", "Custom zoom percentage")} /><span>%</span><button className="pdf-icon-button" title={t("应用缩放", "Apply zoom")} aria-label={t("应用缩放", "Apply zoom")} disabled={!pdf}><Check size={14} /></button></form></label>
       <button className="pdf-menu-action" disabled={!pdf} onClick={() => { if (viewerRef.current) viewerRef.current.pagesRotation = (viewerRef.current.pagesRotation + 90) % 360; }}><RotateCw size={15} />{t("顺时针旋转 90°", "Rotate 90° clockwise")}</button>
+      <div className="pdf-options-separator" />
+      <button className="pdf-menu-action" disabled={!captureReady} onClick={() => beginImageCapture()}><ScanLine size={15} />{t('框选图表问 AI', 'Select a figure for AI')}</button>
+      <button className="pdf-menu-action" disabled={!captureReady} onClick={() => beginImageCapture(true)}><FileImage size={15} />{t('发送当前页给 AI', 'Send current page to AI')}</button>
       <div className="pdf-options-separator" />
       <button className="pdf-menu-action" disabled={!!busy} onClick={() => void exportOrPrint('export')}>{busy === 'export' ? <LoaderCircle className="pdf-spin" size={15} /> : <Download size={15} />}{t("导出 PDF（含目录与批注）", "Export PDF with outline and annotations")}</button>
       <button className="pdf-menu-action" disabled={!!busy} onClick={() => void exportOrPrint('print')}>{busy === 'print' ? <LoaderCircle className="pdf-spin" size={15} /> : <Printer size={15} />}{t("打印 PDF", "Print PDF")}</button>
@@ -979,6 +1132,10 @@ export default function PdfPane(props: PdfPaneProps) {
         {sidebar === 'annotations' && selectedAnnotation && <div className="pdf-comment-editor"><div className="pdf-markup-editor-options"><label>{t("标记类型", "Markup type")}<select aria-label={t("批注类型", "Annotation type")} value={annotationKindDraft} onChange={event => setAnnotationKindDraft(event.target.value as MarkupKind)}>{MARKUP_TOOLS.map(item => <option key={item.kind} value={item.kind}>{item.menuLabel}</option>)}</select></label><label>{t("颜色", "Color")}<input type="color" aria-label={t("批注颜色", "Annotation color")} value={annotationColorDraft} onChange={event => setAnnotationColorDraft(event.target.value)} /></label></div><label>{t("批注", "Comment")}<textarea ref={annotationInputRef} aria-label={t("批注内容", "Comment text")} placeholder={t("记录你的想法…", "Write your thoughts…")} value={commentDraft} onChange={event => setCommentDraft(event.target.value)} /></label><div className="pdf-comment-actions"><button className="pdf-text-button pdf-delete-annotation" title={t("删除这条批注及标记，可撤销", "Delete this comment and its mark; you can undo this")} aria-label={t("删除批注", "Delete annotation")} disabled={annotationBusy} onClick={() => deleteAnnotation(selectedAnnotation.id)}><Trash2 size={14} />{t("删除批注", "Delete annotation")}</button><button className="pdf-text-button" disabled={annotationBusy} onClick={() => { if (submitAnnotations(latest.current.document.annotations.map(item => item.id === annotationId ? { ...item, kind: annotationKindDraft, color: annotationColorDraft, comment: commentDraft } : item))) setAnnotationId(null); }}><Check size={13} />{t("保存批注", "Save annotation")}</button></div></div>}
       </aside>}
       <div className="pdf-canvas-area">
+        {(imageCapture || imageCapturing) && <div className={`pdf-image-capture-actions ${imageCapturing ? 'is-rendering' : ''}`} role="status">
+          <span>{imageCapturing ? t('正在生成图像…', 'Preparing image…') : t('在当前页拖动框选图表；松开后加入 AI 草稿', 'Drag within this page; release to add the figure to your AI draft')}</span>
+          <button type="button" onClick={cancelImageCapture} aria-label={t('取消截图', 'Cancel image capture')}><X size={14} />{t('取消', 'Cancel')}</button>
+        </div>}
         <div ref={containerRef} className={`pdf-viewer-container ${highlightArmed ? 'pdf-highlighter-active' : ''}`} tabIndex={0} aria-label={t("PDF 页面", "PDF pages")} onMouseUp={event => { if (event.button === 0 && !event.ctrlKey) captureSelection(true); }} onKeyUp={event => { if (event.shiftKey || event.key === 'Shift') captureSelection(event.key === 'Shift'); }} onContextMenu={event => { event.preventDefault(); openContextMenu(event.clientX, event.clientY, event.target); }} onKeyDown={event => {
           if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); openContextMenu(0, 0, event.target); }
         }} onClickCapture={event => {

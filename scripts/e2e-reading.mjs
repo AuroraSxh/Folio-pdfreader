@@ -211,7 +211,7 @@ try {
   const currentPosition = await floatingPosition();
   await dragAssistantHeader(220 - currentPosition.x, 56 - currentPosition.y);
   const beforeFloatingResize = await page.locator('.assistant-shell').boundingBox();
-  let floatingDivider = await page.getByRole('separator', { name: '调整阅读伙伴宽度', exact: true }).boundingBox();
+  let floatingDivider = await page.locator('[data-assistant-resize="w"]').boundingBox();
   await page.mouse.move(floatingDivider.x + floatingDivider.width / 2, floatingDivider.y + floatingDivider.height / 2); await page.mouse.down();
   await page.mouse.move(floatingDivider.x + floatingDivider.width / 2 - 36, floatingDivider.y + floatingDivider.height / 2, { steps: 10 }); await page.mouse.up();
   await waitUntil(async () => (await page.locator('.assistant-shell').boundingBox()).width > beforeFloatingResize.width + 30, 'positioned floating panel resizes from its left edge');
@@ -220,7 +220,7 @@ try {
   assert.ok(Math.abs(afterFloatingResize.y - beforeFloatingResize.y) <= 2, 'Floating resize must preserve vertical position');
   sameBounds(await page.locator('.pdf-columns').boundingBox(), beforeOverlay, 'Floating resize must preserve PDF bounds');
   // Restore the original width so later dock/focus coverage uses its original geometry.
-  floatingDivider = await page.getByRole('separator', { name: '调整阅读伙伴宽度', exact: true }).boundingBox();
+  floatingDivider = await page.locator('[data-assistant-resize="w"]').boundingBox();
   await page.mouse.move(floatingDivider.x + floatingDivider.width / 2, floatingDivider.y + floatingDivider.height / 2); await page.mouse.down();
   await page.mouse.move(floatingDivider.x + floatingDivider.width / 2 + afterFloatingResize.width - beforeFloatingResize.width, floatingDivider.y + floatingDivider.height / 2, { steps: 10 }); await page.mouse.up();
   await waitUntil(async () => Math.abs((await page.locator('.assistant-shell').boundingBox()).width - beforeFloatingResize.width) <= 2, 'floating panel width restored');

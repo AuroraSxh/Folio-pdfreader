@@ -4,6 +4,7 @@ import type { ProviderConfig, ProviderId, Settings } from '../../shared/types';
 import { DEFAULT_UI_FONT_SCALE, normalizeUIFontScale, UI_FONT_SCALES } from '../../shared/uiFont';
 import { CUSTOM_PROVIDER_PRESETS, customPresetForURL, hasAPIOriginChanged, requiresReplacementKey, withProviderBaseURL } from '../../shared/provider-presets';
 import { normalizeUpdateSourcePreference } from '../../shared/updates';
+import { getVisionCapability } from '../../shared/vision';
 import { useI18n } from '../i18n';
 import UpdatePanel from './UpdatePanel';
 import './ui-components.css';
@@ -30,6 +31,7 @@ export default function SettingsModal({ settings, onClose, onSaved, onRefresh, o
   const modalRef = useRef<HTMLDivElement>(null);
   const savedProviders = useRef(settings.providers);
   const providerConfig = draft.providers[provider];
+  const vision = getVisionCapability(providerConfig);
   const preset = provider === 'custom' ? customPresetForURL(providerConfig.baseURL) : undefined;
   const needsReplacement = requiresReplacementKey(savedProviders.current[provider], providerConfig);
   const destinationChanged = hasAPIOriginChanged(savedProviders.current[provider].baseURL, providerConfig.baseURL);
@@ -98,6 +100,16 @@ export default function SettingsModal({ settings, onClose, onSaved, onRefresh, o
             {preset && <button type="button" className="fl-text-link" onClick={() => void window.folio.openExternal(preset.docs).catch(error => onError(String(error)))}>{t('查看所选平台的官方文档', 'Official documentation for this platform')} <ArrowUpRight size={12} /></button>}
             {provider === 'deepseek' && <><label className="fl-field"><span>{t("DeepSeek 模型", "DeepSeek model")}</span><div className="fl-model-options">{[{ model: 'deepseek-flash', title: 'Flash', subtitle: t("日常问答，快速理解", "Fast, everyday paper questions") }, { model: 'deepseek-v4-pro', title: 'Pro', subtitle: t("复杂推理，深入分析", "Complex reasoning and analysis") }].map(item => <button key={item.model} className={providerConfig.model === item.model ? 'active' : ''} onClick={() => patchProvider({ model: item.model })}><span><strong>{item.title}</strong>{providerConfig.model === item.model && <Check size={14} />}</span><small>{item.subtitle}</small></button>)}</div></label><Toggle checked={providerConfig.thinking !== false} onChange={checked => patchProvider({ thinking: checked })} label={t("深度思考", "Thinking mode")} description={t("启用模型思考模式，更仔细地分析论文与问题。", "Enable reasoning for a closer analysis of papers and questions.")} />{providerConfig.thinking !== false && <label className="fl-field"><span>{t("思考深度", "Thinking depth")}</span><select aria-label={t("思考深度", "Thinking depth")} value={providerConfig.reasoningEffort ?? 'high'} onChange={event => patchProvider({ reasoningEffort: event.target.value as 'low' | 'high' | 'max' })}><option value="low">{t("低 · Low", "Low")}</option><option value="high">{t("高 · High（默认）", "High (default)")}</option><option value="max">{t("最高 · Max", "Max")}</option></select><small>{t("更高的深度可能需要更多响应时间与 tokens。", "Higher depth may take longer and use more tokens.")}</small></label>}<button className="fl-text-link" onClick={() => void window.folio.openExternal('https://api-docs.deepseek.com/guides/thinking_mode/').catch(error => onError(String(error)))}>{t("查看 DeepSeek 官方思考模式文档", "DeepSeek thinking-mode documentation")} <ArrowUpRight size={12} /></button></>}
             <div className="fl-field-pair"><label className="fl-field"><span>{t("模型 ID", "Model ID")}</span><input aria-label={t("模型 ID", "Model ID")} value={providerConfig.model} onChange={event => patchProvider({ model: event.target.value })} spellCheck={false} /><small>{preset?.modelExample ? t('如 {model}。请填写此平台账号支持的模型名称。', 'For example, {model}. Enter a model available to your account on this platform.', { model: preset.modelExample }) : t("可直接填写服务商支持的模型名称。", "Enter a model name supported by this provider.")}</small></label><label className="fl-field"><span>{t("最大输出 tokens", "Maximum output tokens")}</span><input aria-label={t("最大输出 tokens", "Maximum output tokens")} type="number" min={256} max={393216} step={256} value={providerConfig.maxTokens} onChange={event => patchProvider({ maxTokens: Number(event.target.value) })} /></label></div>
+            <label className="fl-field fl-vision-setting"><span>{t('图片输入', 'Image input')}</span>
+              <select aria-label={t('模型图片输入', 'Model image input')} aria-describedby="vision-model-help" value={providerConfig.vision ?? 'auto'} onChange={event => patchProvider({ vision: event.target.value as ProviderConfig['vision'] })}>
+                <option value="auto">{t('自动识别模型能力（推荐）', 'Detect model support (recommended)')}</option>
+                <option value="enabled">{t('兼容接口：我已确认支持图片', 'Compatible endpoint: I have confirmed image support')}</option>
+                <option value="disabled">{t('关闭图片输入', 'Disable image input')}</option>
+              </select>
+              <small id="vision-model-help" className="fl-vision-capability" data-state={vision.status} aria-live="polite">{t(vision.reason['zh-CN'], vision.reason.en)}{' '}{t(vision.suggestion['zh-CN'], vision.suggestion.en)}</small>
+              <small>{t('在 PDF 中框选图表或发送当前页，确认预览后随问题发送。沿用当前模型和 API Key，图片也会计入 API 用量。', 'Select a figure or attach the current PDF page, review the preview, then send your question. Images use the selected model and API key and count toward API usage.')}</small>
+            </label>
+            {vision.docs && <button type="button" className="fl-text-link" onClick={() => void window.folio.openExternal(vision.docs!).catch(error => onError(String(error)))}>{t('查看图片输入官方文档', 'Official image input documentation')} <ArrowUpRight size={12} /></button>}
             <div className="fl-settings-divider" />
             <Toggle label={t("自动生成论文摘要", "Automatic paper summaries")} description={t("首次打开已完成文本索引的论文时，自动请求 AI 摘要，会产生 API 费用。", "Request a summary when an indexed paper is first opened. This incurs API charges.")} checked={draft.autoSummary} onChange={checked => setDraft(previous => ({ ...previous, autoSummary: checked }))} />
             <Toggle label={t("自动积累阅读记忆", "Automatic reading memory")} description={t("从对话中提炼发现与问题，供后续阅读调用；会产生额外 API 请求。", "Extract findings and questions from conversations for future reading. This makes additional API requests.")} checked={draft.autoMemory} onChange={checked => setDraft(previous => ({ ...previous, autoMemory: checked }))} />

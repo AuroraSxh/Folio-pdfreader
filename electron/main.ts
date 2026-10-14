@@ -215,6 +215,8 @@ function registerIPC(){
   handle('swap-panes',(id:string,expected:PaneSwapExpected)=>library.swapPanes(id,expected));
   handle('remove-document',(id:string,doc:string)=>library.detachDocument(id,doc));
   handle('read-document',async(id:string,doc:string)=>new Uint8Array(await fs.readFile(library.documentPath(id,doc))));
+  handle('read-chat-image',(id:string,imageId:string)=>library.readChatImage(id,imageId));
+  handle('document-page-count',(id:string,docId:string,pageCount:number)=>library.setDocumentPageCount(id,docId,pageCount));
   handle('index-document',(id:string,doc:string,index:DocumentIndex)=>library.index(id,doc,index));
   handle('reveal-workspace',async(id:string)=>{const error=await shell.openPath(library.directory(id));if(error)throw new Error(error);});
   handle('export-pdf',async(id:string,docId:string)=>{
@@ -346,7 +348,7 @@ if(primaryInstance)void app.whenReady().then(async()=>{
   const root=process.env.FOLIO_USER_DATA?path.join(app.getPath('userData'),'Library'):path.join(app.getPath('documents'),'Folio Library');
   settings=new SettingsStore(app.getPath('userData'),root);await settings.init();library=new LibraryStore(root);await library.init();
   const readingCache=new ReadingCacheStore(root);
-  ai=createAIService({getReadingCache:(id,key)=>{library.get(id);return readingCache.get(id,key);},setReadingCache:(id,key,text)=>{library.get(id);return readingCache.set(id,key,text);},getWorkspace:id=>library.get(id),listWorkspaces:()=>library.list(),getSettings:()=>settings.get(),getDocumentPages:(id,doc)=>library.pages(id,doc),mutateWorkspace:(id,fn)=>library.mutate(id,fn),emit:event=>emit('chat',event)});
+  ai=createAIService({getReadingCache:(id,key)=>{library.get(id);return readingCache.get(id,key);},setReadingCache:(id,key,text)=>{library.get(id);return readingCache.set(id,key,text);},getWorkspace:id=>library.get(id),listWorkspaces:()=>library.list(),getSettings:()=>settings.get(),getDocumentPages:(id,doc)=>library.pages(id,doc),saveChatImages:(id,images)=>library.saveChatImages(id,images),readChatImage:(id,imageId)=>library.readChatImage(id,imageId),discardChatImages:(id,ids)=>library.discardChatImages(id,ids),mutateWorkspace:(id,fn)=>library.mutate(id,fn),emit:event=>emit('chat',event)});
   initializeUpdater();
   powerMonitor.on('suspend',()=>{void stopVoice();});
   powerMonitor.on('lock-screen',()=>{void stopVoice();});

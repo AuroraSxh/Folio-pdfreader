@@ -10,10 +10,10 @@ import { normalizeUpdateSourcePreference } from '../shared/updates';
 
 export function defaultSettings(libraryPath:string):Settings {
   return {language:'zh-CN',autoCheckUpdates:true,updateSource:'auto',activeProvider:'deepseek',providers:{
-    deepseek:{id:'deepseek',baseURL:'https://api.deepseek.com',model:'deepseek-flash',maxTokens:16384,thinking:true,reasoningEffort:'high'},
-    openai:{id:'openai',baseURL:'https://api.openai.com/v1',model:'',maxTokens:8192},
-    anthropic:{id:'anthropic',baseURL:'https://api.anthropic.com',model:'',maxTokens:8192},
-    custom:{id:'custom',baseURL:'http://127.0.0.1:11434/v1',model:'',maxTokens:8192}
+    deepseek:{id:'deepseek',baseURL:'https://api.deepseek.com',model:'deepseek-flash',maxTokens:16384,thinking:true,reasoningEffort:'high',vision:'auto'},
+    openai:{id:'openai',baseURL:'https://api.openai.com/v1',model:'',maxTokens:8192,vision:'auto'},
+    anthropic:{id:'anthropic',baseURL:'https://api.anthropic.com',model:'',maxTokens:8192,vision:'auto'},
+    custom:{id:'custom',baseURL:'http://127.0.0.1:11434/v1',model:'',maxTokens:8192,vision:'auto'}
   },libraryPath,vaultPath:'',obsidianSubfolder:'Papers',autoSummary:false,autoMemory:true,contextMaxChars:180000,theme:'light',readingTheme:'white',annotationToolbar:'floating',uiFontScale:DEFAULT_UI_FONT_SCALE};
 }
 
@@ -36,6 +36,7 @@ export class SettingsStore {
     for(const id of Object.keys(defaults.providers) as ProviderId[]){
       const raw=((stored.providers as Record<string,unknown>)?.[id]??{}) as Record<string,unknown>;
       this.config.providers[id]={...defaults.providers[id],...raw,id,apiKey:undefined};
+      this.config.providers[id].vision = ['auto', 'enabled', 'disabled'].includes(String(raw.vision)) ? raw.vision as 'auto'|'enabled'|'disabled' : 'auto';
       if(typeof raw.encryptedKey==='string'){
         try{const key=this.secureStorage.decryptString(Buffer.from(raw.encryptedKey,'base64'));this.config.providers[id].apiKey=key;this.encryptedKeys.set(id,{key,encrypted:raw.encryptedKey});}
         catch{throw new Error(translate(this.getLanguage(),'无法解密已保存的 API Key，请检查系统安全存储访问权限；密钥只能由原设备上的原用户解密','The saved API key could not be decrypted. Check system secure-storage access; only the original user on the original device can decrypt it.'));}
@@ -65,7 +66,8 @@ export class SettingsStore {
         if(u.username||u.password)throw new Error(t('请在 API Key 输入框填写凭证','Enter credentials in the API Key field.'));
       }
       if(requiresReplacementKey(next.providers[id],{...p,baseURL}))throw new Error(t('API 地址已更换服务商或区域。请重新填写对应平台的 API Key 后保存。','The API address now points to another provider or region. Enter its API key before saving.'));
-      next.providers[id]={id,baseURL,model:p.model.trim(),maxTokens:Math.max(256,Math.min(393216,Number(p.maxTokens)||8192)),thinking:p.thinking!==false,reasoningEffort:['low','high','max'].includes(p.reasoningEffort??'')?p.reasoningEffort:'high',apiKey:p.apiKey?.trim()||next.providers[id].apiKey};
+      if (p.vision !== undefined && !['auto', 'enabled', 'disabled'].includes(p.vision)) throw new Error(t('图片能力设置无效', 'Invalid image capability setting.'));
+      next.providers[id]={id,baseURL,model:p.model.trim(),maxTokens:Math.max(256,Math.min(393216,Number(p.maxTokens)||8192)),thinking:p.thinking!==false,reasoningEffort:['low','high','max'].includes(p.reasoningEffort??'')?p.reasoningEffort:'high',vision:p.vision ?? 'auto',apiKey:p.apiKey?.trim()||next.providers[id].apiKey};
     }
     next.vaultPath=typeof input.vaultPath==='string'?input.vaultPath:next.vaultPath;
     if(next.vaultPath){

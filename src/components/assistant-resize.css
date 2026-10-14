@@ -1,0 +1,153 @@
+/* Kimi K3/max reviewed resize affordances. Bounds, pointer capture, keyboard
+   behavior and persistence stay in useFloatingAssistant. No idle animation. */
+.assistant-shell.is-overlay {
+  height: var(--assistant-height, min(640px, calc(100% - 48px)));
+  --assistant-edge-hit: 12px;
+  --assistant-edge-outset: -10px;
+  --assistant-corner-hit: 24px;
+  --assistant-corner-outset: -12px;
+  --assistant-corner-clearance: 16px;
+  --assistant-resize-ink: var(--accent);
+  --assistant-resize-focus: var(--focus, var(--accent));
+}
+
+/* A thin edge lies mostly outside the panel: it must not become a transparent
+   cover over scrollbars, header buttons, citations or the text composer. The
+   24px corners and keyboard controls provide the larger alternative targets. */
+.assistant-shell.is-overlay > .assistant-edge-resize {
+  position: absolute;
+  z-index: 6;
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--assistant-resize-ink);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: no-drag;
+  transition: none;
+}
+.assistant-shell.is-overlay > .assistant-edge-resize:active:not(:disabled) { transform: none; }
+.assistant-shell.is-docked > .assistant-edge-resize { display: none; }
+
+.assistant-shell.is-overlay > :is(.assistant-edge-resize-n, .assistant-edge-resize-s) {
+  left: var(--assistant-corner-clearance);
+  right: var(--assistant-corner-clearance);
+  height: var(--assistant-edge-hit);
+  cursor: ns-resize;
+}
+.assistant-shell.is-overlay > .assistant-edge-resize-n { top: var(--assistant-edge-outset); }
+.assistant-shell.is-overlay > .assistant-edge-resize-s { bottom: var(--assistant-edge-outset); }
+.assistant-shell.is-overlay > :is(.assistant-edge-resize-e, .assistant-edge-resize-w) {
+  top: var(--assistant-corner-clearance);
+  bottom: var(--assistant-corner-clearance);
+  width: var(--assistant-edge-hit);
+  cursor: ew-resize;
+}
+.assistant-shell.is-overlay > .assistant-edge-resize-e { right: var(--assistant-edge-outset); }
+.assistant-shell.is-overlay > .assistant-edge-resize-w { left: var(--assistant-edge-outset); }
+
+.assistant-shell.is-overlay > :is(.assistant-edge-resize-ne, .assistant-edge-resize-nw, .assistant-edge-resize-se, .assistant-edge-resize-sw) {
+  width: var(--assistant-corner-hit);
+  height: var(--assistant-corner-hit);
+  border-radius: 7px;
+}
+.assistant-shell.is-overlay > .assistant-edge-resize-ne { top: var(--assistant-corner-outset); right: var(--assistant-corner-outset); cursor: nesw-resize; }
+.assistant-shell.is-overlay > .assistant-edge-resize-nw { top: var(--assistant-corner-outset); left: var(--assistant-corner-outset); cursor: nwse-resize; }
+.assistant-shell.is-overlay > .assistant-edge-resize-se { bottom: var(--assistant-corner-outset); right: var(--assistant-corner-outset); cursor: nwse-resize; }
+.assistant-shell.is-overlay > .assistant-edge-resize-sw { bottom: var(--assistant-corner-outset); left: var(--assistant-corner-outset); cursor: nesw-resize; }
+
+.assistant-shell.is-overlay > .assistant-edge-resize::before {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+}
+.assistant-shell.is-overlay > :is(.assistant-edge-resize-n, .assistant-edge-resize-s)::before {
+  left: 50%;
+  width: min(64px, 60%);
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: currentColor;
+}
+.assistant-shell.is-overlay > .assistant-edge-resize-n::before { bottom: 0; }
+.assistant-shell.is-overlay > .assistant-edge-resize-s::before { top: 0; }
+.assistant-shell.is-overlay > :is(.assistant-edge-resize-e, .assistant-edge-resize-w)::before {
+  top: 50%;
+  height: min(64px, 60%);
+  width: 2px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: currentColor;
+}
+.assistant-shell.is-overlay > .assistant-edge-resize-e::before { left: 0; }
+.assistant-shell.is-overlay > .assistant-edge-resize-w::before { right: 0; }
+
+/* Quiet corner brackets remain discoverable without a bright frame. */
+.assistant-shell.is-overlay > :is(.assistant-edge-resize-ne, .assistant-edge-resize-nw, .assistant-edge-resize-se, .assistant-edge-resize-sw)::before {
+  width: 11px;
+  height: 11px;
+  border: 0 solid currentColor;
+  opacity: .45;
+  background: transparent;
+}
+.assistant-shell.is-overlay > .assistant-edge-resize-ne::before { right: 11px; top: 11px; border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 7px; }
+.assistant-shell.is-overlay > .assistant-edge-resize-nw::before { left: 11px; top: 11px; border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 7px; }
+.assistant-shell.is-overlay > .assistant-edge-resize-se::before { right: 11px; bottom: 11px; border-bottom-width: 2px; border-right-width: 2px; border-bottom-right-radius: 7px; }
+.assistant-shell.is-overlay > .assistant-edge-resize-sw::before { left: 11px; bottom: 11px; border-bottom-width: 2px; border-left-width: 2px; border-bottom-left-radius: 7px; }
+
+.assistant-shell.is-overlay > .assistant-edge-resize:hover::before,
+.assistant-shell.is-overlay > .assistant-edge-resize:focus-visible::before { opacity: 1; }
+.assistant-shell.is-overlay > .assistant-edge-resize:focus-visible {
+  outline: 2px solid var(--assistant-resize-focus);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--assistant-resize-focus) 12%, transparent);
+}
+.assistant-shell.is-overlay.is-resizing > .assistant-edge-resize::before { transition: none; }
+.assistant-shell.is-overlay[data-resize-active="n"] > .assistant-edge-resize-n::before,
+.assistant-shell.is-overlay[data-resize-active="s"] > .assistant-edge-resize-s::before,
+.assistant-shell.is-overlay[data-resize-active="e"] > .assistant-edge-resize-e::before,
+.assistant-shell.is-overlay[data-resize-active="w"] > .assistant-edge-resize-w::before,
+.assistant-shell.is-overlay[data-resize-active="ne"] > .assistant-edge-resize-ne::before,
+.assistant-shell.is-overlay[data-resize-active="nw"] > .assistant-edge-resize-nw::before,
+.assistant-shell.is-overlay[data-resize-active="se"] > .assistant-edge-resize-se::before,
+.assistant-shell.is-overlay[data-resize-active="sw"] > .assistant-edge-resize-sw::before { opacity: 1; color: var(--assistant-resize-focus); }
+
+/* Keep the cursor true to both axes even outside the panel during capture. */
+body.resizing-assistant:has(.assistant-shell.is-overlay:is([data-resize-active="n"], [data-resize-active="s"])) { cursor: ns-resize; }
+body.resizing-assistant:has(.assistant-shell.is-overlay:is([data-resize-active="e"], [data-resize-active="w"])) { cursor: ew-resize; }
+body.resizing-assistant:has(.assistant-shell.is-overlay:is([data-resize-active="ne"], [data-resize-active="sw"])) { cursor: nesw-resize; }
+body.resizing-assistant:has(.assistant-shell.is-overlay:is([data-resize-active="nw"], [data-resize-active="se"])) { cursor: nwse-resize; }
+
+/* At normal 640px this leaves the composer unchanged. At smaller heights it
+   can scroll independently, while chat retains a reachable reading region.
+   Extremely small containers may also scroll the outer panel instead of
+   clipping controls. None of these rules apply to the docked companion. */
+.assistant-shell.is-overlay > .fl-assistant { min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.assistant-shell.is-overlay .fl-chat-scroll { min-height: 72px; }
+.assistant-shell.is-overlay .fl-composer-area {
+  flex-shrink: 1;
+  min-height: min(120px, 35%);
+  max-height: 65%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-shell.is-overlay > .assistant-edge-resize::before { transition: none; }
+}
+@media (forced-colors: active) {
+  .assistant-shell.is-overlay { --assistant-resize-ink: CanvasText; --assistant-resize-focus: Highlight; }
+  .assistant-shell.is-overlay > .assistant-edge-resize { forced-color-adjust: none; }
+  .assistant-shell.is-overlay > .assistant-edge-resize::before { opacity: 1; }
+  .assistant-shell.is-overlay > .assistant-edge-resize:focus-visible { background: Canvas; outline-color: Highlight; }
+}

@@ -5,6 +5,8 @@ import type { Element } from 'hast';
 import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCheck, ChevronDown, Clipboard, Copy, FileText, FlaskConical, Globe, Highlighter, History, Lightbulb, LoaderCircle, MessageSquare, Mic, NotebookPen, Plus, RefreshCw, Search, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import type { ChatEvent, ChatRequest, Settings, TextSelection, Workspace } from '../../shared/types';
 import type { ReadingReport } from '../../shared/reading';
+import { MAX_CHAT_IMAGES, type DraftChatImage } from '../../shared/images';
+import { getVisionCapability } from '../../shared/vision';
 import { supportsWebSearch, type WebSearchResult } from '../../shared/web-search';
 import { useI18n } from '../i18n';
 import { getSummaryPrompt } from '../../shared/prompts';
@@ -15,7 +17,10 @@ import { PLATFORM } from '../platform';
 import { useVoiceConversation } from '../hooks/useVoiceConversation';
 import VoiceControls from './VoiceControls';
 import { ReadingCoverage, ReadingProgress } from './ReadingCoverage';
-import { WebSearchSources } from './WebSearchSources';
+import { WebSearchSources, visibleWebSearchResult } from './WebSearchSources';
+import { findWebSourceCitation, WebSourceCitation } from './WebSourceCitation';
+import { DraftImageAttachments, StoredImageAttachments } from './ImageAttachments';
+import { appendDraftImage, removeSubmittedDrafts, sameImageScope, submissionImages, validatedDrafts, type DraftImageItem, type ImageSubmission } from './imageDrafts';
 import { resolveReadingRequest, resolveReadingSources } from './readingRequest';
 import './ui-components.css';
 import './source-citations.css';
@@ -27,6 +32,8 @@ interface Props {
   onSettings: () => void; onError: (message: string) => void;
   onNavigate: (docId: string, page: number, quote?: string) => void;
   focusRequest?: { workspaceId: string; nonce: number };
+  imageRequest?: { workspaceId: string; conversationId: string; nonce: number; image: DraftChatImage };
+  onImageRequestConsumed?: (nonce: number) => void;
   panelControls?: ReactNode;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
   voiceHost?: HTMLElement | null;
@@ -37,7 +44,7 @@ interface VoiceSubmission {
   locale: 'zh-CN' | 'en-US'; answer: (text: string) => void;
   completion: Promise<void>; resolve: () => void; reject: (error: Error) => void;
 }
-type Send = (promptText: string, kind?: ChatRequest['kind'], selectionOverride?: TextSelection | null, sourceOverride?: string[], voice?: VoiceSubmission, readingModeOverride?: ChatRequest['readingMode'], webSearchOverride?: boolean) => Promise<void>;
+type Send = (promptText: string, kind?: ChatRequest['kind'], selectionOverride?: TextSelection | null, sourceOverride?: string[], voice?: VoiceSubmission, readingModeOverride?: ChatRequest['readingMode'], webSearchOverride?: boolean, imageSubmission?: ImageSubmission) => Promise<void>;
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 
 /** Batch SSE tokens without an idle interval. A generation guard also rejects
@@ -72,7 +79,7 @@ export function createStreamAccumulator(
 
 const markdownURL = (url: string) => url.startsWith('folio-cite://') ? url : defaultUrlTransform(url);
 type SourceNavigate = (id: string, page: number, quote?: string) => void;
-interface MarkdownProps { text: string; citationKey: string; onNavigate: SourceNavigate; onError: (message: string) => void; interactive?: boolean }
+interface MarkdownProps { text: string; citationKey: string; onNavigate: SourceNavigate; onError: (message: string) => void; interactive?: boolean; webSearch?: WebSearchResult }
 
 /** A block with several references asks which one, rather than guessing evidence. */
 function SourceBlock({ tag: Tag, children, sources, onNavigate }: { tag: 'p' | 'li'; children?: ReactNode; sources: SourceCitation[]; onNavigate: SourceNavigate }) {
@@ -111,9 +118,10 @@ function blockSources(node: Element | undefined, resolver: ReturnType<typeof cre
   return [...found.values()];
 }
 
-const MemoMarkdown = memo(function MemoMarkdown({ text, citationKey, onNavigate, onError, interactive = true }: MarkdownProps) {
+const MemoMarkdown = memo(function MemoMarkdown({ text, citationKey, onNavigate, onError, interactive = true, webSearch }: MarkdownProps) {
   const { t } = useI18n();
   const resolver = useMemo(() => createCitationResolver(JSON.parse(citationKey) as CitationDocument[]), [citationKey]);
+  const webSources = useMemo(() => visibleWebSearchResult(webSearch), [webSearch]);
   const plugins = useMemo(() => [remarkGfm, [remarkSourceCitations, resolver]] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['remarkPlugins']>, [resolver]);
   const components = useMemo<NonNullable<React.ComponentProps<typeof ReactMarkdown>['components']>>(() => ({
     a: ({ href, children }) => {
@@ -123,16 +131,18 @@ const MemoMarkdown = memo(function MemoMarkdown({ text, citationKey, onNavigate,
         title={citation.quote ? `${citation.name} p.${citation.page}\n${citation.quote}` : t('查看引用页：{name} p.{page}', 'View cited page: {name} p.{page}', { name: citation.name, page: citation.page })}
         onClick={event => { event.stopPropagation(); onNavigate(citation.documentId, citation.page, citation.quote); }}><FileText size={11} aria-hidden="true" /><span className="fl-citation-name">{citation.name}</span><span className="fl-citation-page"> p.{citation.page}</span></button>;
       if (href?.startsWith('folio-cite://')) return <span>{children}</span>;
+      const webCitation = findWebSourceCitation(href, webSources);
+      if (webCitation) return <WebSourceCitation citation={webCitation} onError={onError} />;
       return <a href={href} onClick={event => { event.preventDefault(); if (href) void window.folio.openExternal(href).catch(cause => onError(errorText(cause))); }}>{children}</a>;
     },
     p: ({ node, children }) => <SourceBlock tag="p" sources={interactive ? blockSources(node, resolver) : []} onNavigate={onNavigate}>{children}</SourceBlock>,
     li: ({ node, children }) => <SourceBlock tag="li" sources={interactive ? blockSources(node, resolver) : []} onNavigate={onNavigate}>{children}</SourceBlock>,
     img: ({ alt }) => <span className="fl-markdown-image">{t("[图片：{alt}]", "[Image: {alt}]", { alt: alt || t("外部图片", "External image") })}</span>,
-  }), [onNavigate, onError, t, resolver, interactive]);
+  }), [onNavigate, onError, t, resolver, interactive, webSources]);
   return <ReactMarkdown remarkPlugins={plugins} urlTransform={markdownURL} components={components}>{text}</ReactMarkdown>;
 });
 
-export default function AssistantPanel({ workspace, settings, selection, onClearSelection, onWorkspace, onSettings, onError, onNavigate, focusRequest, panelControls, dragHandleProps, voiceHost, voiceToggleRequest, onVoiceActiveChange }: Props) {
+export default function AssistantPanel({ workspace, settings, selection, onClearSelection, onWorkspace, onSettings, onError, onNavigate, focusRequest, imageRequest, onImageRequestConsumed, panelControls, dragHandleProps, voiceHost, voiceToggleRequest, onVoiceActiveChange }: Props) {
   const { language, locale, t } = useI18n();
   const STARTERS = useMemo(() => [
   { title: t("总结这篇论文", "Summarize this paper"), detail: t("抓住问题、方法与核心发现", "Questions, methods, and key findings"), icon: Sparkles, prompt: getSummaryPrompt(language), kind: 'summary' },
@@ -143,6 +153,17 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const memoryLabels = useMemo(() => ({ finding: t('研究发现', 'Findings'), interpretation: t('分析解读', 'Interpretations'), question: t('待解问题', 'Open questions'), 'user-note': t('个人关注', 'Personal interests'), 'cross-ref': t('跨文关联', 'Cross-paper links') }), [t]);
   const [tab, setTab] = useState<'chat' | 'notes' | 'memory'>('chat');
   const [input, setInput] = useState('');
+  const [draftImages, setDraftImages] = useState<DraftImageItem[]>([]);
+  const draftImagesRef = useRef(draftImages);
+  const draftImageScope = useRef({ workspaceId: workspace.id, conversationId: workspace.activeConversationId });
+  const lastImageRequest = useRef<{ workspaceId: string; conversationId: string; nonce: number } | undefined>(undefined);
+  const [imageFocusRequest, setImageFocusRequest] = useState<number | null>(null);
+  const [pendingImages, setPendingImages] = useState<DraftImageItem[]>([]);
+  const lastImageSubmission = useRef<ImageSubmission | undefined>(undefined);
+  const imageAcknowledgement = useRef<{ requestId: string; failed: boolean } | undefined>(undefined);
+  const updateDraftImages = useCallback((next: (current: DraftImageItem[]) => DraftImageItem[]) => {
+    const value = next(draftImagesRef.current); draftImagesRef.current = value; setDraftImages(value);
+  }, []);
   const [source, setSource] = useState('all');
   const [readingMode, setReadingMode] = useState<'smart' | 'deep'>('smart');
   const [webSearch, setWebSearch] = useState(false);
@@ -152,8 +173,11 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const [stream, setStream] = useState('');
   const [pendingPrompt, setPendingPrompt] = useState('');
   const [requestId, setRequestId] = useState<string | null>(null);
+  const visibleDraftImages = requestId && lastImageSubmission.current?.draftIds
+    ? draftImages.filter(item => !lastImageSubmission.current!.draftIds!.includes(item.id)) : draftImages;
   const [status, setStatus] = useState<string | UiNotice>('');
   const [error, setError] = useState('');
+  const [retryableError, setRetryableError] = useState(false);
   const [notice, setNotice] = useState<UiNotice | null>(null);
   const [notes, setNotes] = useState(workspace.notes);
   const [notesStatus, setNotesStatus] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -164,8 +188,8 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const [deleteTarget, setDeleteTarget] = useState<{ conversationId: string; messageId: string; prompt: string } | null>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const [memoryType, setMemoryType] = useState('all');
-  const currentRef = useRef({ workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, onSettings, t });
-  currentRef.current = { workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, onSettings, t };
+  const currentRef = useRef({ workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, onSettings, onImageRequestConsumed, t });
+  currentRef.current = { workspace, settings, onWorkspace, onError, onNavigate, onClearSelection, onSettings, onImageRequestConsumed, t };
   const notesRef = useRef(notes); notesRef.current = notes;
   const savedNotes = useRef(workspace.notes);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -183,6 +207,10 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const chosenSelection = selection ?? clipboardSelection;
   const selectedSources = resolveReadingSources({ documents: workspace.documents, source, selection: chosenSelection });
   const provider = settings.providers[settings.activeProvider];
+  const vision = getVisionCapability(provider);
+  const imageSendBlocked = draftImages.length > 0 && vision.status !== 'supported';
+  const imageDocumentKey = JSON.stringify(workspace.documents.map(document => document.id));
+  const imageDocumentIds = useMemo(() => JSON.parse(imageDocumentKey) as string[], [imageDocumentKey]);
   const hasKey = Boolean(provider.hasKey || provider.apiKey);
   const webSearchSupported = supportsWebSearch(provider);
   const webSearchAvailable = webSearchSupported && hasKey;
@@ -225,6 +253,34 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     },
   });
   const observedConversation = useRef(workspace.activeConversationId);
+  useEffect(() => {
+    const next = { workspaceId: workspace.id, conversationId: workspace.activeConversationId };
+    if (sameImageScope(draftImageScope.current, next)) return;
+    // Creating the first conversation belongs to the same pending submission.
+    const initialConversation = !draftImageScope.current.conversationId && draftImageScope.current.workspaceId === workspace.id
+      && requestRef.current?.conversationId === next.conversationId;
+    draftImageScope.current = next;
+    if (!initialConversation) { updateDraftImages(() => []); setPendingImages([]); lastImageSubmission.current = undefined; lastRequest.current = null; }
+  }, [workspace.id, workspace.activeConversationId, updateDraftImages]);
+  useEffect(() => {
+    if (!imageRequest) return;
+    const current = currentRef.current;
+    const scope = { workspaceId: current.workspace.id, conversationId: current.workspace.activeConversationId };
+    if (!sameImageScope(imageRequest, scope) || lastImageRequest.current?.nonce === imageRequest.nonce && sameImageScope(lastImageRequest.current, imageRequest)) {
+      current.onImageRequestConsumed?.(imageRequest.nonce); return;
+    }
+    lastImageRequest.current = { ...scope, nonce: imageRequest.nonce };
+    setRetryableError(false);
+    try {
+      updateDraftImages(items => appendDraftImage(items, imageRequest.image, crypto.randomUUID(), current.workspace.documents));
+      setError(''); setTab('chat'); setImageFocusRequest(imageRequest.nonce);
+    } catch (cause) { setTab('chat'); const parts = errorText(cause).split(' / '); setError(current.settings.language === 'en' ? parts[1] ?? parts[0] : parts[0]); }
+    finally { current.onImageRequestConsumed?.(imageRequest.nonce); }
+  }, [imageRequest, updateDraftImages]);
+  useLayoutEffect(() => {
+    if (imageFocusRequest === null || tab !== 'chat' || !inputRef.current) return;
+    inputRef.current.focus({ preventScroll: true }); setImageFocusRequest(null);
+  }, [imageFocusRequest, tab]);
   useEffect(() => { setDeleteTarget(null); }, [workspace.activeConversationId]);
   useEffect(() => { if (deleteTarget) cancelDeleteRef.current?.focus({ preventScroll: true }); }, [deleteTarget]);
   useEffect(() => {
@@ -309,14 +365,15 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     if (event.type === 'delta') streamAccumulator.append(event.text ?? '');
     if (event.type === 'status') {
       setStatus(event.text || { zh: "正在阅读论文…", en: "Reading the paper…" });
-      if (event.workspace) { mergeSnapshot(event.workspace); setPendingPrompt(''); if (event.workspace.conversations.find(item => item.id === requestRef.current?.conversationId)?.messages.at(-1)?.role === 'assistant') { streamAccumulator.clear(); setWebSearchReport(undefined); } }
+      if (event.workspace) { mergeSnapshot(event.workspace); setPendingPrompt(''); setPendingImages([]); if (event.workspace.conversations.find(item => item.id === requestRef.current?.conversationId)?.messages.at(-1)?.role === 'assistant') { streamAccumulator.clear(); setWebSearchReport(undefined); } }
     }
     if (event.type === 'done' || event.type === 'error') {
+      if (imageAcknowledgement.current?.requestId === event.requestId && (event.type === 'error' || event.interrupted)) imageAcknowledgement.current.failed = true;
       // Persisted completion is authoritative, including the last buffered token.
       // If a transport error has no snapshot, keep all received partial text.
-      if (event.workspace) { mergeSnapshot(event.workspace); setPendingPrompt(''); streamAccumulator.clear(); setWebSearchReport(undefined); }
+      if (event.workspace) { mergeSnapshot(event.workspace); setPendingPrompt(''); setPendingImages([]); streamAccumulator.clear(); setWebSearchReport(undefined); }
       else streamAccumulator.flush();
-      if (event.type === 'error') setError(event.text || currentRef.current.t("请求失败，请检查 API 设置后重试。", "Request failed. Check your API settings and try again."));
+      if (event.type === 'error') { setRetryableError(true); setError(event.text || currentRef.current.t("请求失败，请检查 API 设置后重试。", "Request failed. Check your API settings and try again.")); }
       if (event.interrupted) setNotice({ zh: "已停止生成", en: "Generation stopped" });
       requestRef.current = null; setRequestId(null); setStatus(''); setReadingProgress(undefined);
       if (voiceRequest) {
@@ -328,14 +385,25 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     }
   }), [mergeSnapshot, streamAccumulator]);
 
-  const send: Send = useCallback(async (promptText: string, kind: ChatRequest['kind'] = 'chat', selectionOverride?: TextSelection | null, sourceOverride?: string[], voiceSubmission?: VoiceSubmission, readingModeOverride?: ChatRequest['readingMode'], webSearchOverride?: boolean) => {
+  const send: Send = useCallback(async (promptText: string, kind: ChatRequest['kind'] = 'chat', selectionOverride?: TextSelection | null, sourceOverride?: string[], voiceSubmission?: VoiceSubmission, readingModeOverride?: ChatRequest['readingMode'], webSearchOverride?: boolean, imageSubmission?: ImageSubmission) => {
     if (actionBusyRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
+    setRetryableError(false);
     if (!voiceSubmission && voice.controller.getState().active) await voice.controller.pause();
     const current = currentRef.current;
+    if (requestRef.current || actionBusyRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
+    if (imageSubmission?.scope && !sameImageScope(imageSubmission.scope, { workspaceId: current.workspace.id, conversationId: current.workspace.activeConversationId })) {
+      setError(current.t('对话已切换，请在当前对话中重新选择要发送的图像。', 'The conversation changed. Select the images again in the current conversation.')); return;
+    }
+    let images: DraftChatImage[];
+    try { images = validatedDrafts(submissionImages(imageSubmission, !!voiceSubmission), current.workspace.documents); }
+    catch (cause) { const parts = errorText(cause).split(' / '); setError(current.settings.language === 'en' ? parts[1] ?? parts[0] : parts[0]); return; }
+    if (images.length && !promptText.trim()) promptText = current.t('请解释所附论文图像：说明图中内容、坐标与图例、实验条件和主要结论，并结合对应页文字。无法辨认或缺少依据的细节请明确说明，不要猜测。', 'Explain the attached paper images: describe their content, axes and legends, experimental conditions, and main findings, using the corresponding page text. State when details are unreadable or unsupported; do not guess.');
     const resolved = resolveReadingRequest({ prompt: promptText, kind, mode: readingMode, override: readingModeOverride, voice: !!voiceSubmission, language: current.settings.language, webSearch, webSearchOverride });
     promptText = resolved.prompt; kind = resolved.kind;
     if (!promptText.trim() || requestRef.current || actionBusyRef.current) { voiceSubmission?.reject(new Error('[busy]')); return; }
     const active = current.settings.providers[current.settings.activeProvider];
+    const imageCapability = getVisionCapability(active);
+    if (images.length && imageCapability.status !== 'supported') { setError(imageCapability.reason[current.settings.language] + ' ' + imageCapability.suggestion[current.settings.language]); return; }
     if (!active.hasKey && !active.apiKey) { setError(current.t("请先在设置中填写 API Key。", "Add your API key in Settings first.")); voiceSubmission?.reject(new Error('[missing-key]')); return; }
     if (resolved.webSearch && !supportsWebSearch(active)) {
       setError(current.t('当前模型或接口暂不支持原生联网搜索。请在 AI 设置中调整当前模型，或关闭联网搜索后发送新问题。', 'The current model or endpoint does not support native web search. Adjust the current model in AI settings, or turn web search off and send a new question.'));
@@ -347,26 +415,39 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
       voiceSubmission?.reject(new Error('[no-document]')); return;
     }
     const id = crypto.randomUUID();
-    const preliminary: ChatRequest = { requestId: id, workspaceId: current.workspace.id, conversationId: current.workspace.activeConversationId, prompt: promptText.trim(), kind, readingMode: resolved.readingMode, webSearch: resolved.webSearch, documentIds: sources.documentIds, selection: sources.selection, ...(voiceSubmission ? { source: 'voice' as const, voiceLocale: voiceSubmission.locale } : {}) };
+    for (const image of images) if (image.source && !sources.documentIds.includes(image.source.documentId)) sources.documentIds.push(image.source.documentId);
+    const preliminary: ChatRequest = { requestId: id, workspaceId: current.workspace.id, conversationId: current.workspace.activeConversationId, prompt: promptText.trim(), kind, readingMode: resolved.readingMode, webSearch: resolved.webSearch, documentIds: sources.documentIds, selection: sources.selection, ...(images.length ? { images } : {}), ...(voiceSubmission ? { source: 'voice' as const, voiceLocale: voiceSubmission.locale } : {}) };
     requestRef.current = preliminary; lastRequest.current = preliminary;
+    lastImageSubmission.current = imageSubmission;
+    const acknowledgement = { requestId: id, failed: false }; imageAcknowledgement.current = acknowledgement;
     if (voiceSubmission) voiceRequestRef.current = { ...voiceSubmission, requestId: id, answered: false, started: false };
     followStream.current = true;
     streamAccumulator.clear();
-    setRequestId(id); setPendingPrompt(promptText.trim()); setError(''); setNotice(null); setReadingReport(undefined); setReadingProgress(undefined); setWebSearchReport(undefined); setStatus({ zh: "正在准备论文上下文…", en: "Preparing paper context…" });
-    if (!voiceSubmission) { setInput(''); setTab('chat'); }
+    setRequestId(id); setPendingPrompt(promptText.trim()); setPendingImages(images.map((image, index) => ({ id: `${id}-${index}`, image }))); setError(''); setNotice(null); setReadingReport(undefined); setReadingProgress(undefined); setWebSearchReport(undefined); setStatus({ zh: "正在准备论文上下文…", en: "Preparing paper context…" });
+    if (!voiceSubmission) { if (!imageSubmission) setInput(''); setTab('chat'); }
     try {
       await flushNotes();
       if (!mounted.current || requestRef.current !== preliminary) return;
-      if (!preliminary.conversationId) { const next = await window.folio.newConversation(current.workspace.id); if (!mounted.current || requestRef.current !== preliminary) return; preliminary.conversationId = next.activeConversationId; mergeSnapshot(next); }
+      if (!preliminary.conversationId) { const next = await window.folio.newConversation(current.workspace.id); if (!mounted.current || requestRef.current !== preliminary) return; preliminary.conversationId = next.activeConversationId; if (imageSubmission?.scope) imageSubmission.scope = { workspaceId: preliminary.workspaceId, conversationId: preliminary.conversationId }; mergeSnapshot(next); }
       current.onClearSelection(); setClipboardSelection(null);
       if (voiceRequestRef.current?.requestId === id) voiceRequestRef.current.started = true;
       await window.folio.startChat(preliminary);
+      if (mounted.current && !acknowledgement.failed && currentRef.current.workspace.id === preliminary.workspaceId && currentRef.current.workspace.activeConversationId === preliminary.conversationId) {
+        if (imageSubmission?.draftIds) updateDraftImages(items => removeSubmittedDrafts(items, imageSubmission.draftIds!));
+        if (imageSubmission?.draftText !== undefined) setInput(value => value === imageSubmission.draftText ? '' : value);
+      }
     } catch (cause) {
       if (voiceRequestRef.current?.requestId === id) { voiceRequestRef.current.reject(new Error('[chat-failed]')); voiceRequestRef.current = null; }
-      if (mounted.current && requestRef.current === preliminary) { streamAccumulator.flush(); requestRef.current = null; setRequestId(null); setStatus(''); setReadingProgress(undefined); setError(errorText(cause)); }
+      if (mounted.current && requestRef.current === preliminary) { streamAccumulator.flush(); requestRef.current = null; setRequestId(null); setPendingPrompt(''); setPendingImages([]); setStatus(''); setReadingProgress(undefined); setRetryableError(true); setError(errorText(cause)); }
     }
-  }, [source, readingMode, webSearch, chosenSelection, flushNotes, mergeSnapshot, streamAccumulator, voice.controller]);
+  }, [source, readingMode, webSearch, chosenSelection, flushNotes, mergeSnapshot, streamAccumulator, voice.controller, updateDraftImages]);
   sendRef.current = send;
+  const submitDraft = () => {
+    const current = currentRef.current.workspace;
+    if (!sameImageScope(draftImageScope.current, { workspaceId: current.id, conversationId: current.activeConversationId })) return;
+    const items = draftImagesRef.current;
+    void send(input, 'chat', undefined, undefined, undefined, undefined, undefined, { images: items.map(item => item.image), draftIds: items.map(item => item.id), draftText: input, scope: { workspaceId: current.id, conversationId: current.activeConversationId } });
+  };
 
   useEffect(() => {
     const indexed = workspace.documents.length > 0 && workspace.documents.every(doc => doc.textStatus !== undefined);
@@ -379,7 +460,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const runAction = async (action: () => Promise<void>) => {
     if (actionBusyRef.current) return;
     actionBusyRef.current = true;
-    setActionBusy(true); setError(''); setNotice(null);
+    setActionBusy(true); setError(''); setRetryableError(false); setNotice(null);
     try { await action(); } catch (cause) { if (mounted.current) setError(errorText(cause)); } finally { actionBusyRef.current = false; if (mounted.current) setActionBusy(false); }
   };
   const askDelete = (messageId: string) => {
@@ -405,6 +486,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     await flushNotes();
     requestRef.current = null;
     lastRequest.current = null;
+    lastImageSubmission.current = undefined; setPendingImages([]);
     setRequestId(null); setPendingPrompt(''); setStatus(''); streamAccumulator.clear();
     const next = await window.folio.deleteChatTurn(workspace.id, target.conversationId, target.messageId);
     if (!mounted.current) return;
@@ -419,7 +501,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     if (result) setNotice({ zh: "已导出：{path}", en: "Exported: {path}", values: { path: result.path } });
   });
   const addToNotes = (text: string) => { setNotes(previous => `${previous.trim()}${previous.trim() ? '\n\n---\n\n' : ''}${text}`); setNotesStatus('saving'); setNotice({ zh: "已加入个人笔记", en: "Added to personal notes" }); };
-  const copyText = async (text: string) => { try { await navigator.clipboard.writeText(readableCitations(text, workspace.documents)); setNotice({ zh: "已复制", en: "Copied" }); } catch (cause) { setError(errorText(cause)); } };
+  const copyText = async (text: string) => { try { await navigator.clipboard.writeText(readableCitations(text, workspace.documents)); setNotice({ zh: "已复制", en: "Copied" }); } catch (cause) { setRetryableError(false); setError(errorText(cause)); } };
   const stopGeneration = () => {
     const activeRequest = requestRef.current;
     if (!activeRequest) return;
@@ -427,14 +509,14 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     streamAccumulator.flush();
     void window.folio.abortChat(activeRequest.requestId).catch(cause => setError(errorText(cause)));
   };
-  const md = (text: string) => <MemoMarkdown text={text} citationKey={citationKey} onNavigate={navigateCitation} onError={markdownError} />;
+  const md = (text: string, webSearch?: WebSearchResult) => <MemoMarkdown text={text} citationKey={citationKey} onNavigate={navigateCitation} onError={markdownError} webSearch={webSearch} />;
 
   return <><aside className="fl-assistant" aria-label={t("论文阅读助手", "Paper reading assistant")}>
     <header className="fl-assistant-header" data-draggable={Boolean(dragHandleProps)} {...dragHandleProps}><span className="fl-assistant-logo"><Sparkles size={18} /></span><div><strong>{t("阅读伙伴", "Reading companion")}</strong>{dragHandleProps && <span>{t("拖动标题栏，自由移动", "Drag the header to move")}</span>}</div><span className="assistant-panel-controls"><button className="fl-icon-button" aria-label={t("AI 设置", "AI settings")} title={t("AI 设置", "AI settings")} onClick={onSettings}><Settings2 size={16} /></button>{panelControls}</span></header>
     <div className="fl-assistant-tabs" role="tablist">{[{ id: 'chat', label: t("对话", "Chat"), icon: MessageSquare }, { id: 'notes', label: t("笔记", "Notes"), icon: NotebookPen }, { id: 'memory', label: t("记忆", "Memory"), icon: Brain }].map(item => <button role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} key={item.id} onClick={() => setTab(item.id as typeof tab)}><item.icon size={14} />{item.label}{item.id === 'memory' && workspace.memories.length > 0 && <span>{workspace.memories.length}</span>}</button>)}</div>
 
     {tab === 'chat' && <>
-      <div className="fl-conversation-bar"><History size={13} /><select aria-label={t("历史对话", "Conversation history")} value={conversation?.id ?? ''} disabled={(!!requestId && requestRef.current?.source !== 'voice') || actionBusy} onChange={event => { const conversationId = event.target.value; void runAction(async () => { await voice.controller.end(); const next = await window.folio.updateWorkspace(workspace.id, { activeConversationId: conversationId }); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); }); }}>{!conversation && <option value="">{t("新的阅读对话", "New reading conversation")}</option>}{workspace.conversations.map(item => <option key={item.id} value={item.id}>{item.title || t("新的阅读对话", "New reading conversation")}</option>)}</select><button className="fl-icon-button" title={t("新建对话", "New conversation")} aria-label={t("新建对话", "New conversation")} disabled={(!!requestId && requestRef.current?.source !== 'voice') || actionBusy} onClick={() => void runAction(async () => { await voice.controller.end(); const next = await window.folio.newConversation(workspace.id); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); })}><Plus size={15} /></button></div>
+      <div className="fl-conversation-bar"><History size={13} /><select aria-label={t("历史对话", "Conversation history")} value={conversation?.id ?? ''} disabled={(!!requestId && requestRef.current?.source !== 'voice') || actionBusy} onChange={event => { const conversationId = event.target.value; void runAction(async () => { await voice.controller.end(); const next = await window.folio.updateWorkspace(workspace.id, { activeConversationId: conversationId }); mergeSnapshot(next); setPendingPrompt(''); setPendingImages([]); streamAccumulator.clear(); }); }}>{!conversation && <option value="">{t("新的阅读对话", "New reading conversation")}</option>}{workspace.conversations.map(item => <option key={item.id} value={item.id}>{item.title || t("新的阅读对话", "New reading conversation")}</option>)}</select><button className="fl-icon-button" title={t("新建对话", "New conversation")} aria-label={t("新建对话", "New conversation")} disabled={(!!requestId && requestRef.current?.source !== 'voice') || actionBusy} onClick={() => void runAction(async () => { await voice.controller.end(); const next = await window.folio.newConversation(workspace.id); mergeSnapshot(next); setPendingPrompt(''); streamAccumulator.clear(); })}><Plus size={15} /></button></div>
       {deleteTarget && <div className="fl-delete-exchange" role="alertdialog" aria-label={t('删除本轮问答？', 'Delete this exchange?')} aria-describedby="delete-exchange-description" onKeyDown={event => { if (event.key === 'Escape' && !actionBusy) { event.stopPropagation(); setDeleteTarget(null); inputRef.current?.focus(); } }}>
         <strong>{t('删除本轮问答？', 'Delete this exchange?')}</strong>
         <blockquote>{deleteTarget.prompt}</blockquote>
@@ -446,7 +528,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
         {!messages.length && !pendingPrompt && <div className="fl-chat-welcome"><div className="fl-ai-orb"><Sparkles size={24} strokeWidth={1.3} /></div><h3>{t("一起，读懂这篇论文。", "Read this paper together.")}</h3><p>{t("从一个问题开始。也可以在 PDF 中选中一段，让我们从那里深入。", "Start with a question, or select a passage in the PDF to explore it together.")}</p>{!hasKey && <button className="fl-key-cta" onClick={onSettings}><span><Settings2 size={15} /><strong>{t("连接你的 AI 服务", "Connect your AI service")}</strong><small>{t("填写 API Key 后开始对话", "Add your API key to start chatting")}</small></span><ArrowUpRight size={17} /></button>}<div className="fl-starters">{STARTERS.map(item => <button key={item.title} disabled={!!requestId || actionBusy} onClick={() => hasKey ? void send(item.prompt, item.kind) : onSettings()}><item.icon size={16} /><span><strong>{item.title}</strong><small>{item.detail}</small></span><ArrowUpRight size={13} /></button>)}</div><div className="fl-context-note"><FileText size={12} /> {t("结合本文与补充材料，回答附带页码。", "Answers draw on the paper and supplements, with page citations.")}</div></div>}
         {messages.map(message => <article className={`fl-message ${message.role}`} key={message.id} data-message-id={message.id}>
           {message.role === 'assistant' && <div className="fl-message-author"><span><Sparkles size={12} /></span>Pairleaf <small>{message.model}</small></div>}
-          <div className={message.role === 'assistant' ? 'fl-markdown' : 'fl-user-message'}>{message.source === 'voice' && <span className="fl-message-voice"><Mic size={10} />{t("语音", "Voice")}</span>}{message.role === 'assistant' ? md(message.content) : message.content}</div>
+          <div className={message.role === 'assistant' ? 'fl-markdown' : 'fl-user-message'}>{message.source === 'voice' && <span className="fl-message-voice"><Mic size={10} />{t("语音", "Voice")}</span>}{message.role === 'assistant' ? md(message.content, message.webSearch) : message.content}</div><StoredImageAttachments workspaceId={workspace.id} images={message.images} documentIds={imageDocumentIds} onNavigate={navigateCitation} />
           {message.role === 'assistant' && <><ReadingCoverage report={message.reading} /><WebSearchSources result={message.webSearch} onError={markdownError} /></>}
           {message.interrupted && <span className="fl-interrupted">{t("已停止生成", "Generation stopped")}</span>}
           <div className="fl-message-actions">
@@ -454,9 +536,9 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
             <button className="fl-delete-exchange-button" aria-label={t('删除本轮问答', 'Delete this exchange')} title={t('删除本轮问答', 'Delete this exchange')} disabled={actionBusy} onClick={() => askDelete(message.id)}><Trash2 size={12} />{t('删除', 'Delete')}</button>
           </div>
         </article>)}
-        {pendingPrompt && <article className="fl-message user"><div className="fl-user-message">{pendingPrompt}</div></article>}
-        {(requestId || stream) && <article className="fl-message assistant"><div className="fl-message-author"><span><Sparkles size={12} /></span>Pairleaf <small>{provider.model}</small></div><ReadingProgress progress={readingProgress} />{stream ? <div className="fl-markdown fl-streaming">{md(stream)}</div> : <div className="fl-thinking"><span /><span /><span /><small>{(status ? typeof status === "string" ? status : t(status.zh, status.en, status.values) : t("正在思考…", "Thinking…"))}</small></div>}<ReadingCoverage report={readingReport} /><WebSearchSources result={webSearchReport} onError={markdownError} /></article>}
-        {error && <div className="fl-inline-error" role="alert"><span>{error}</span>{!requestId && lastRequest.current && <button onClick={() => { const previous = lastRequest.current; if (previous) void send(previous.prompt, previous.kind, previous.selection ?? null, previous.documentIds, undefined, previous.readingMode, previous.webSearch ?? false); }}><RefreshCw size={12} /> {t("重试", "Retry")}</button>}</div>}
+        {pendingPrompt && <article className="fl-message user"><div className="fl-user-message">{pendingPrompt}</div><DraftImageAttachments workspaceId={workspace.id} items={pendingImages} documentIds={imageDocumentIds} onNavigate={navigateCitation} pending /></article>}
+        {(requestId || stream) && <article className="fl-message assistant"><div className="fl-message-author"><span><Sparkles size={12} /></span>Pairleaf <small>{provider.model}</small></div><ReadingProgress progress={readingProgress} />{stream ? <div className="fl-markdown fl-streaming">{md(stream, webSearchReport)}</div> : <div className="fl-thinking"><span /><span /><span /><small>{(status ? typeof status === "string" ? status : t(status.zh, status.en, status.values) : t("正在思考…", "Thinking…"))}</small></div>}<ReadingCoverage report={readingReport} /><WebSearchSources result={webSearchReport} onError={markdownError} /></article>}
+        {error && <div className="fl-inline-error" role="alert"><span>{error}</span>{!requestId && retryableError && lastRequest.current && <button onClick={() => { const previous = lastRequest.current; if (previous) void send(previous.prompt, previous.kind, previous.selection ?? null, previous.documentIds, undefined, previous.readingMode, previous.webSearch ?? false, { ...lastImageSubmission.current, images: previous.images ?? [] }); }}><RefreshCw size={12} /> {t("重试", "Retry")}</button>}</div>}
       </div>
       <div className="fl-composer-area">
         <div className="fl-composer-options">
@@ -471,7 +553,11 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
           : t('按问题检索论文中的相关片段。', 'Retrieves relevant paper passages.')}</p>
         <p className="fl-web-search-help" id="web-search-help">{!webSearchAvailable ? webSearchSupported ? t('请为当前模型配置 API Key 后再使用联网搜索。', 'Add an API key for the current model to use web search.') : t('当前模型或接口不支持联网，请在 AI 设置中更改配置。', 'This model or endpoint has no native search. Change its configuration in AI settings.') : webSearch ? t('联网已开启 · 当前模型搜索并回答，可能额外收费。', 'Search on · Uses this model; extra model and search fees may apply.') : t('联网默认关闭 · 开启后使用当前模型，可能额外收费。', 'Off by default · Uses this model; extra model and search fees may apply.')}</p>
         {chosenSelection && <div className="fl-selection-context"><div><Highlighter size={12} /><span>{t('{name} · 第 {page} 页', '{name} · p. {page}', { name: chosenSelection.documentName, page: chosenSelection.page })}</span><button className="fl-icon-button" aria-label={t("清除选中文字", "Clear selected text")} onClick={() => { onClearSelection(); setClipboardSelection(null); }}><X size={12} /></button></div><blockquote>{chosenSelection.text}</blockquote>{selectedSources.addedSelectionDocument && <small>{t('本次也会引用此 PDF，保留下方所选文档。', 'This PDF will also be included, alongside the documents selected below.')}</small>}</div>}
-        <div className="fl-composer"><textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label={t("向 AI 提问", "Ask AI")} placeholder={hasKey ? readingMode === 'deep' ? t("针对问题精读，或留空生成全文摘要", "Add a question, or leave empty for a full summary") : t("关于这篇论文，你想了解什么？", "What would you like to know about this paper?") : t("先连接 AI 服务，再开始讨论…", "Connect an AI service to start discussing…")} rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!requestId) void send(input); } if (event.key === 'Escape' && requestRef.current) stopGeneration(); }} /><div className="fl-composer-bottom"><label className="fl-source-picker"><LayersIcon /><select aria-label={t("AI 引用文档范围", "AI source documents")} value={source} onChange={event => setSource(event.target.value)}><option value="all">{t('全部文档 · {count}', 'All documents · {count}', { count: workspace.documents.length })}</option>{workspace.documents.map(doc => <option value={doc.id} key={doc.id}>{doc.role === 'main' ? t("正文", "Main") : t("补充", "Supplement")} · {doc.name}</option>)}</select><ChevronDown size={10} /></label><button className="fl-icon-button" title={t("粘贴剪贴板文字作为引用", "Paste clipboard text as a quote")} aria-label={t("粘贴引用", "Paste quote")} disabled={!!requestId} onClick={() => void runAction(async () => { const text = await navigator.clipboard.readText(); if (!text.trim()) throw new Error(t("剪贴板为空，请先复制需要讨论的文字。", "The clipboard is empty. Copy the passage you want to discuss first.")); const doc = workspace.documents.find(item => item.id === workspace.layout.leftId) ?? workspace.documents[0]; if (!doc) throw new Error(t("请先导入 PDF 文档。", "Import a PDF first.")); setClipboardSelection({ text, documentId: doc.id, documentName: doc.name, page: doc.view.page, rects: [] }); })}><Clipboard size={14} /></button>{(PLATFORM === 'darwin' || PLATFORM === 'win32') && <button className="fl-icon-button fl-voice-entry" aria-label={voice.state.active ? t("停止语音对话", "Stop voice conversation") : t("开启语音对话", "Start voice conversation")} title={t("语音对话", "Voice conversation")} aria-pressed={voice.state.active} onClick={() => voice.state.active ? void voice.controller.end() : void voice.controller.configure()}><Mic size={15} /></button>}{requestId ? <button className="fl-send-button stopping" aria-label={t("停止生成", "Stop generation")} title={t("停止生成", "Stop generation")} onClick={stopGeneration}><Square size={13} fill="currentColor" /></button> : <button className="fl-send-button" aria-label={readingMode === 'deep' ? t("开始整篇精读", "Start full-paper reading") : t("发送问题", "Send question")} title={readingMode === 'deep' ? t("开始整篇精读 · Enter", "Start full-paper reading · Enter") : t("发送 · Enter", "Send · Enter")} disabled={(!input.trim() && readingMode !== 'deep') || !hasKey || actionBusy || !workspace.documents.length} onClick={() => void send(input)}><ArrowUp size={17} /></button>}</div></div>
+        <DraftImageAttachments workspaceId={workspace.id} items={visibleDraftImages} documentIds={imageDocumentIds} onNavigate={navigateCitation} onRemove={id => updateDraftImages(items => items.filter(item => item.id !== id))} />
+        {!!visibleDraftImages.length && <p className="fl-image-notice" data-status={vision.status} role="status">{vision.status === 'supported'
+          ? t('这些图像将发送给当前模型 {model}，计入服务商用量。每轮最多 {max} 张、单张 4 MiB、合计 8 MiB。', 'These images will be sent to {model} and count toward provider usage. Up to {max} images, 4 MiB each and 8 MiB total.', { model: provider.model, max: MAX_CHAT_IMAGES })
+          : <>{vision.reason[language]} {vision.suggestion[language]} <button type="button" onClick={onSettings}>{t('更改图片设置', 'Change image settings')}</button></>}</p>}
+        <div className="fl-composer"><textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label={t("向 AI 提问", "Ask AI")} placeholder={hasKey ? readingMode === 'deep' ? t("针对问题精读，或留空生成全文摘要", "Add a question, or leave empty for a full summary") : t("关于这篇论文，你想了解什么？", "What would you like to know about this paper?") : t("先连接 AI 服务，再开始讨论…", "Connect an AI service to start discussing…")} rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!requestId) submitDraft(); } if (event.key === 'Escape' && requestRef.current) stopGeneration(); }} /><div className="fl-composer-bottom"><label className="fl-source-picker"><LayersIcon /><select aria-label={t("AI 引用文档范围", "AI source documents")} value={source} onChange={event => setSource(event.target.value)}><option value="all">{t('全部文档 · {count}', 'All documents · {count}', { count: workspace.documents.length })}</option>{workspace.documents.map(doc => <option value={doc.id} key={doc.id}>{doc.role === 'main' ? t("正文", "Main") : t("补充", "Supplement")} · {doc.name}</option>)}</select><ChevronDown size={10} /></label><button className="fl-icon-button" title={t("粘贴剪贴板文字作为引用", "Paste clipboard text as a quote")} aria-label={t("粘贴引用", "Paste quote")} disabled={!!requestId} onClick={() => void runAction(async () => { const text = await navigator.clipboard.readText(); if (!text.trim()) throw new Error(t("剪贴板为空，请先复制需要讨论的文字。", "The clipboard is empty. Copy the passage you want to discuss first.")); const doc = workspace.documents.find(item => item.id === workspace.layout.leftId) ?? workspace.documents[0]; if (!doc) throw new Error(t("请先导入 PDF 文档。", "Import a PDF first.")); setClipboardSelection({ text, documentId: doc.id, documentName: doc.name, page: doc.view.page, rects: [] }); })}><Clipboard size={14} /></button>{(PLATFORM === 'darwin' || PLATFORM === 'win32') && <button className="fl-icon-button fl-voice-entry" aria-label={voice.state.active ? t("停止语音对话", "Stop voice conversation") : t("开启语音对话", "Start voice conversation")} title={t("语音对话", "Voice conversation")} aria-pressed={voice.state.active} onClick={() => voice.state.active ? void voice.controller.end() : void voice.controller.configure()}><Mic size={15} /></button>}{requestId ? <button className="fl-send-button stopping" aria-label={t("停止生成", "Stop generation")} title={t("停止生成", "Stop generation")} onClick={stopGeneration}><Square size={13} fill="currentColor" /></button> : <button className="fl-send-button" aria-label={readingMode === 'deep' ? t("开始整篇精读", "Start full-paper reading") : t("发送问题", "Send question")} title={readingMode === 'deep' ? t("开始整篇精读 · Enter", "Start full-paper reading · Enter") : t("发送 · Enter", "Send · Enter")} disabled={(!input.trim() && !draftImages.length && readingMode !== 'deep') || !hasKey || imageSendBlocked || actionBusy || !workspace.documents.length} onClick={submitDraft}><ArrowUp size={17} /></button>}</div></div>
         <div className="fl-composer-caption"><button onClick={onSettings}><span className={`fl-small-dot ${hasKey ? '' : 'muted'}`} />{provider.model}{provider.thinking !== false && settings.activeProvider === 'deepseek' && t(" · 思考", " · Thinking")}</button><span>{t("↵ 发送 · ⇧↵ 换行", "↵ Send · ⇧↵ New line")}</span></div>
       </div>
     </>}

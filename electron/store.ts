@@ -1,10 +1,11 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import JSZip from 'jszip';
 import { DEFAULT_VIEW, type Workspace, type PaperDocument, type DocumentIndex, type OutlineItem, type RemovedWorkspace, type DocumentEditHistory, type PaneSwapExpected, type ViewState } from '../shared/types';
 import { findChatTurn } from '../shared/chat-turns';
+import { chatImageFilename, inspectChatImageBytes, isChatImageId, MAX_CHAT_IMAGE_BYTES, MAX_CHAT_IMAGES, validateChatImageSource, validateDraftChatImages, validateStoredChatImages, type DraftChatImage, type StoredChatImage } from '../shared/images';
 
 export async function atomicWrite(file: string, data: string | Uint8Array) {
   await fs.mkdir(path.dirname(file), { recursive: true });
@@ -45,6 +46,40 @@ function removedSummary(record:RemovedRecord):RemovedWorkspace {
   const {workspace:ws,removedAt}=record;
   return {id:ws.id,title:ws.title,authors:ws.authors,tags:[...ws.tags],documentCount:ws.documents.length,removedAt};
 }
+function workspaceImages(ws: Workspace): Map<string, StoredChatImage> {
+  const images = new Map<string, StoredChatImage>();
+  for (const conversation of ws.conversations) for (const message of conversation.messages) for (const image of message.images ?? []) {
+    const previous = images.get(image.id);
+    if (previous && !isDeepStrictEqual(previous, image)) throw new Error('同一图片编号有不同记录 / Conflicting image records.');
+    images.set(image.id, image);
+  }
+  return images;
+}
+const isImageFileName = (name: string) => /\.(?:png|jpg)$/.test(name) && isChatImageId(name.replace(/\.(?:png|jpg)$/, ''));
+async function boundedZipImage(file: JSZip.JSZipObject): Promise<Uint8Array> {
+  const declared = (file as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
+  if (declared !== undefined && (!Number.isSafeInteger(declared) || declared < 24 || declared > MAX_CHAT_IMAGE_BYTES)) throw new Error('备份图片大小无效 / Invalid backup image size.');
+  interface ImageStream {
+    on(event:'data', callback:(chunk:Uint8Array)=>void):ImageStream;
+    on(event:'error', callback:(error:unknown)=>void):ImageStream;
+    on(event:'end', callback:()=>void):ImageStream;
+    pause():void; resume():void;
+  }
+  // JSZip exposes its pausable StreamHelper at runtime but omits it from its
+  // declaration file. Its legacy Node stream does not implement async iteration.
+  const stream = (file as unknown as {internalStream(type:'uint8array'):ImageStream}).internalStream('uint8array');
+  return new Promise((resolve,reject)=>{
+    const chunks:Uint8Array[]=[];let size=0,settled=false;
+    stream.on('data',chunk=>{
+      if(settled)return;size+=chunk.byteLength;
+      if(size>MAX_CHAT_IMAGE_BYTES){settled=true;stream.pause();reject(new Error('备份图片超过 4 MiB / Backup image exceeds 4 MiB.'));return;}
+      chunks.push(chunk);
+    }).on('error',reject).on('end',()=>{
+      if(settled)return;const bytes=new Uint8Array(size);let offset=0;
+      for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}resolve(bytes);
+    }).resume();
+  });
+}
 
 export function newWorkspace(title = '未命名论文'): Workspace {
   const now = Date.now(), conversationId = randomUUID();
@@ -78,6 +113,12 @@ export function validateWorkspace(value: unknown): asserts value is Workspace {
   }
   const conversationIds=new Set<string>();
   for(const c of w.conversations){if(!c||typeof c.id!=='string'||!c.id||conversationIds.has(c.id)||typeof c.title!=='string'||!Number.isFinite(c.createdAt)||!Array.isArray(c.messages)||c.messages.some(m=>!m||typeof m.id!=='string'||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||!Number.isFinite(m.createdAt)||(m.turnId!==undefined&&!validChatId(m.turnId))))throw new Error('对话数据无效');conversationIds.add(c.id);}
+  for (const conversation of w.conversations) for (const message of conversation.messages) {
+    // Historical sources are snapshots: an original PDF may have been detached.
+    validateStoredChatImages(message.images);
+    if (message.images?.length && message.role !== 'user') throw new Error('只有提问可以附带图片 / Only user messages may contain image attachments.');
+  }
+  workspaceImages(w);
   if(!conversationIds.has(w.activeConversationId))throw new Error('当前对话不存在');
   for(const m of w.memories) if(!m||typeof m.id!=='string'||!m.id||!['finding','interpretation','question','user-note','cross-ref'].includes(m.type)||typeof m.title!=='string'||typeof m.body!=='string'||!Array.isArray(m.tags)||!m.tags.every(t=>typeof t==='string')||!['ai','user'].includes(m.source)||!Number.isFinite(m.createdAt)||(m.sourceTurnIds!==undefined&&(!Array.isArray(m.sourceTurnIds)||!m.sourceTurnIds.every(validChatId))))throw new Error('记忆数据无效');
   if(typeof w.layout.split!=='boolean'||typeof w.layout.leftId!=='string'||typeof w.layout.rightId!=='string'||!Number.isFinite(w.layout.ratio))throw new Error('阅读布局无效');
@@ -110,10 +151,11 @@ export class LibraryStore {
   private editHistory = new Map<string,EditStack>();
   private historyBytes = 0;
   private writes: Promise<unknown> = Promise.resolve();
+  private pendingChatImages = new Map<string, Map<string, StoredChatImage>>();
   public loadWarnings: string[] = [];
   constructor(public readonly root: string) {}
   async init() {
-    this.workspaces.clear();this.removed.clear();this.editHistory.clear();this.historyBytes=0;this.loadWarnings=[];
+    this.workspaces.clear();this.removed.clear();this.editHistory.clear();this.pendingChatImages.clear();this.historyBytes=0;this.loadWarnings=[];
     await fs.mkdir(this.root, { recursive: true });
     for (const entry of await fs.readdir(this.root, { withFileTypes: true })) {
       if (!entry.isDirectory() || !validId(entry.name)) continue;
@@ -122,6 +164,7 @@ export class LibraryStore {
         validateWorkspace(ws);
         if(ws.id !== entry.name) throw new Error('工作区 ID 不匹配');
         this.workspaces.set(ws.id,ws);
+        await this.pruneOrphanChatImages(path.join(this.root, ws.id), workspaceImages(ws)).catch(() => { this.loadWarnings.push(`${ws.id}: 图片缓存清理失败，原文件已保留`); });
       } catch (e) { this.loadWarnings.push(`${entry.name}: ${e instanceof Error ? e.message : String(e)}`); }
     }
     try{
@@ -144,6 +187,109 @@ export class LibraryStore {
   }
   private queue<T>(fn:()=>Promise<T>): Promise<T> {
     const next = this.writes.then(fn); this.writes = next.catch(()=>{}); return next;
+  }
+  private async imageDirectory(workspaceDirectory: string, create = false): Promise<string> {
+    const relative = path.relative(this.root, workspaceDirectory);
+    if (!relative || path.isAbsolute(relative) || relative.split(path.sep).some(part => part === '..' || part === '.')) throw new Error('图片目录无效 / Invalid image directory.');
+    const rootStat = await fs.lstat(this.root);
+    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error('论文库目录不是有效本地文件夹 / Invalid local library directory.');
+    let directory = this.root;
+    for (const part of relative.split(path.sep)) {
+      directory = path.join(directory, part);
+      const stat = await fs.lstat(directory);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('图片目录不能是符号链接 / Image directory must not be a symbolic link.');
+    }
+    directory = path.join(workspaceDirectory, 'chat-images');
+    if (create) await fs.mkdir(directory, { mode: 0o700 }).catch(error => { if (error.code !== 'EEXIST') throw error; });
+    const stat = await fs.lstat(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('图片目录不能是符号链接 / Image directory must not be a symbolic link.');
+    const expected = path.join(await fs.realpath(this.root), relative, 'chat-images');
+    if (await fs.realpath(directory) !== expected) throw new Error('图片目录超出工作区 / Image directory is outside the workspace.');
+    return directory;
+  }
+  private async readStoredImage(workspaceDirectory: string, image: StoredChatImage): Promise<Uint8Array> {
+    validateStoredChatImages([image]);
+    const directory = await this.imageDirectory(workspaceDirectory), filename = path.join(directory, chatImageFilename(image));
+    const before = await fs.lstat(filename);
+    if (!before.isFile() || before.isSymbolicLink()) throw new Error('图片不能是符号链接 / Image must not be a symbolic link.');
+    const handle = await fs.open(filename, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.nlink !== 1 || stat.size !== image.byteSize || stat.size > MAX_CHAT_IMAGE_BYTES) throw new Error('图片文件与记录不一致 / Image file does not match its record.');
+      // Read at most the verified size, even if another local process grows the file.
+      const bytes = new Uint8Array(stat.size); let offset = 0;
+      while (offset < bytes.length) { const result = await handle.read(bytes, offset, bytes.length - offset, offset); if (!result.bytesRead) break; offset += result.bytesRead; }
+      if (offset !== bytes.length || (await handle.stat()).size !== stat.size) throw new Error('图片读取时已改变 / Image changed while being read.');
+      await this.imageDirectory(workspaceDirectory);
+      const actual = inspectChatImageBytes(bytes);
+      if (actual.mimeType !== image.mimeType || actual.width !== image.width || actual.height !== image.height || actual.byteSize !== image.byteSize) throw new Error('图片内容与记录不一致 / Image content does not match its record.');
+      return bytes;
+    } finally { await handle.close(); }
+  }
+  private async removeImageFiles(workspaceDirectory: string, images: Iterable<StoredChatImage>) {
+    const rows = [...images]; if (!rows.length) return;
+    let directory: string;
+    try { directory = await this.imageDirectory(workspaceDirectory); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+    for (const image of rows) {
+      const filename = path.join(directory, chatImageFilename(image));
+      try {
+        const stat = await fs.lstat(filename);
+        if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('图片文件无效，未清理 / Invalid image file; cleanup skipped.');
+        await fs.unlink(filename);
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    }
+  }
+  private async pruneOrphanChatImages(workspaceDirectory: string, images: Map<string, StoredChatImage>) {
+    let directory: string;
+    try { directory = await this.imageDirectory(workspaceDirectory); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+    const keep = new Set([...images.values()].map(chatImageFilename));
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      if (isImageFileName(entry.name) && !keep.has(entry.name) && entry.isFile() && !entry.isSymbolicLink()) await fs.unlink(path.join(directory, entry.name));
+    }
+  }
+  async saveChatImages(id: string, images: DraftChatImage[]): Promise<StoredChatImage[]> {
+    this.get(id);
+    // Bound and snapshot untrusted input before queuing; do not clone an
+    // unbounded data URL. Byte arrays/source objects are newly allocated here.
+    const validated = validateDraftChatImages(images);
+    return this.queue(async () => {
+      const workspace = this.get(id);
+      for (const image of validated) validateChatImageSource(image.source, workspace.documents);
+      if (!validated.length) return [];
+      const directory = await this.imageDirectory(this.directory(id), true), saved: StoredChatImage[] = [];
+      try {
+        for (const image of validated) {
+          const stored: StoredChatImage = { id: randomUUID(), name: image.name, mimeType: image.mimeType, width: image.width, height: image.height, byteSize: image.byteSize, ...(image.source ? { source: { ...clone(image.source), documentName: workspace.documents.find(doc => doc.id === image.source!.documentId)!.name } } : {}) };
+          const file = await fs.open(path.join(directory, chatImageFilename(stored)), fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
+          saved.push(stored);
+          try { await file.writeFile(image.bytes); } finally { await file.close(); }
+        }
+        await this.imageDirectory(this.directory(id));
+        const pending = this.pendingChatImages.get(id) ?? new Map<string, StoredChatImage>();
+        for (const image of saved) pending.set(image.id, image);
+        this.pendingChatImages.set(id, pending);
+        return clone(saved);
+      } catch (error) { await this.removeImageFiles(this.directory(id), saved).catch(() => {}); throw error; }
+    });
+  }
+  async readChatImage(id: string, imageId: string): Promise<string> {
+    if (!isChatImageId(imageId)) throw new Error('图片编号无效 / Invalid image identifier.');
+    return this.queue(async () => {
+      const workspace = this.get(id), image = workspaceImages(workspace).get(imageId);
+      if (!image) throw new Error('此对话没有该图片 / This workspace does not reference that image.');
+      const bytes = await this.readStoredImage(this.directory(id), image);
+      return `data:${image.mimeType};base64,${Buffer.from(bytes).toString('base64')}`;
+    });
+  }
+  async discardChatImages(id: string, ids: string[]): Promise<void> {
+    if (!Array.isArray(ids) || ids.length > MAX_CHAT_IMAGES || !ids.every(isChatImageId)) throw new Error('图片编号无效 / Invalid image identifiers.');
+    return this.queue(async () => {
+      const workspace = this.get(id), referenced = workspaceImages(workspace), pending = this.pendingChatImages.get(id);
+      const remove = ids.filter(imageId => !referenced.has(imageId)).map(imageId => pending?.get(imageId)).filter((image): image is StoredChatImage => !!image);
+      await this.removeImageFiles(this.directory(id), remove);
+      for (const image of remove) pending?.delete(image.id);
+      if (!pending?.size) this.pendingChatImages.delete(id);
+    });
   }
   getDocumentEditHistory(id:string):DocumentEditHistory {
     this.get(id);const history=this.editHistory.get(id);
@@ -214,9 +360,29 @@ export class LibraryStore {
   }
   private async storedOnDisk(id:string) {return await exists(path.join(this.root,id))||await exists(path.join(this.root,'.trash',id));}
   private async persist(ws: Workspace) {
-    validateWorkspace(ws);
-    await atomicWrite(path.join(this.root,ws.id,'workspace.json'),JSON.stringify(ws,null,2));
-    this.workspaces.set(ws.id,clone(ws));
+    const previous = this.workspaces.get(ws.id), before = previous ? workspaceImages(previous) : new Map<string, StoredChatImage>();
+    try {
+      validateWorkspace(ws);
+      const images = workspaceImages(ws);
+      // Only new references need I/O here. Scrolling a PDF must not reread every
+      // historical image; previews and backups validate bytes when actually used.
+      for (const image of images.values()) if (!isDeepStrictEqual(before.get(image.id), image)) await this.readStoredImage(path.join(this.root, ws.id), image);
+      await atomicWrite(path.join(this.root,ws.id,'workspace.json'),JSON.stringify(ws,null,2));
+      this.workspaces.set(ws.id,clone(ws));
+      const pending = this.pendingChatImages.get(ws.id);
+      for (const image of images.values()) pending?.delete(image.id);
+      if (!pending?.size) this.pendingChatImages.delete(ws.id);
+      const removed = [...before.values()].filter(image => !images.has(image.id));
+      await this.removeImageFiles(path.join(this.root, ws.id), removed).catch(() => { this.loadWarnings.push(`${ws.id}: 已删除问答的图片清理失败，原文件已保留`); });
+    } catch (error) {
+      // A user turn that failed to commit must not leave newly staged images.
+      const pending = this.pendingChatImages.get(ws.id);
+      const staged = [...(pending?.values() ?? [])].filter(image => !before.has(image.id) && Array.isArray(ws.conversations) && ws.conversations.some(c => Array.isArray(c?.messages) && c.messages.some(m => Array.isArray(m?.images) && m.images.some(candidate => candidate?.id === image.id))));
+      await this.removeImageFiles(path.join(this.root, ws.id), staged).catch(() => {});
+      for (const image of staged) pending?.delete(image.id);
+      if (!pending?.size) this.pendingChatImages.delete(ws.id);
+      throw error;
+    }
   }
   async flush() { await this.writes; }
   async insert(ws: Workspace) { return this.queue(async()=>{ validateWorkspace(ws);if(this.hasStoredId(ws.id)||await this.storedOnDisk(ws.id))throw new Error('工作区已存在（可能位于已移除文章中）');const dir=path.join(this.root,ws.id);await fs.mkdir(dir);try{await this.persist(ws);return clone(ws);}catch(error){await fs.rm(dir,{recursive:true,force:true});throw error;} }); }
@@ -364,6 +530,18 @@ export class LibraryStore {
       await this.persist(ws);return clone(ws);
     });
   }
+  async setDocumentPageCount(id: string, docId: string, pageCount: number): Promise<Workspace> {
+    if (!Number.isSafeInteger(pageCount) || pageCount < 1 || pageCount > 1_000_000) throw new Error('PDF 页数无效 / Invalid PDF page count.');
+    return this.queue(async () => {
+      const workspace = this.get(id), document = workspace.documents.find(item => item.id === docId);
+      if (!document) throw new Error('PDF 已不存在');
+      // Opening the PDF reveals its page count before text extraction finishes.
+      // Never mark text ready, create an index, or replace an established count.
+      if (document.pageCount !== 0) return workspace;
+      document.pageCount = pageCount; workspace.updatedAt = Math.max(Date.now(), workspace.updatedAt + 1);
+      await this.persist(workspace); return clone(workspace);
+    });
+  }
   async pages(id:string,docId:string):Promise<string[]> {
     this.documentPath(id,docId);
     try{return JSON.parse(await fs.readFile(path.join(this.root,id,'.text',`${docId}.json`),'utf8'));}
@@ -438,12 +616,15 @@ export class LibraryStore {
       if(await this.trashRoot())for(const entry of await fs.readdir(path.join(this.root,'.trash'),{withFileTypes:true})){
         if(entry.isSymbolicLink()||(entry.isDirectory()&&!this.removed.has(entry.name)))throw new Error(`已移除文章 ${entry.name} 无法读取，请先保留其文件并修复，再备份完整论文库`);
       }
-      zip.file('folio-backup.json',JSON.stringify({format:'folio',version:1,createdAt:Date.now(),workspaces:workspaces.map(w=>w.id),removedWorkspaces:removed.map(r=>r.workspace.id)},null,2));
+      // Older apps reject v2 instead of silently restoring JSON without images.
+      const hasImages = [...workspaces, ...removed.map(record => record.workspace)].some(ws => workspaceImages(ws).size > 0);
+      zip.file('folio-backup.json',JSON.stringify({format:'folio',version:hasImages ? 2 : 1,createdAt:Date.now(),workspaces:workspaces.map(w=>w.id),removedWorkspaces:removed.map(r=>r.workspace.id)},null,2));
       const records=[...workspaces.map(workspace=>({workspace,prefix:workspace.id,removedAt:undefined as number|undefined})),...removed.map(r=>({...r,prefix:`.trash/${r.workspace.id}`}))];
       for(const {workspace:ws,prefix,removedAt} of records){
         const directory=path.join(this.root,prefix);
         zip.file(`${prefix}/workspace.json`,JSON.stringify(ws,null,2));
         if(removedAt!==undefined)zip.file(`${prefix}/${removalFile}`,JSON.stringify({version:1,removedAt}));
+        for (const image of workspaceImages(ws).values()) zip.file(`${prefix}/chat-images/${chatImageFilename(image)}`, await this.readStoredImage(directory, image));
         for(const doc of ws.documents){
           zip.file(`${prefix}/${doc.fileName}`,await fs.readFile(path.join(directory,doc.fileName)));
         }
@@ -462,9 +643,22 @@ export class LibraryStore {
     });
   }
   async restore(data:Uint8Array):Promise<number> {
-    const zip=await JSZip.loadAsync(data,{checkCRC32:true});
+    let zip=await JSZip.loadAsync(data);
+    const imageBytes = new Map<string, Uint8Array>();
+    // Bound image inflation before JSZip's eager whole-archive CRC validation.
+    for (const [name, file] of Object.entries(zip.files)) {
+      const original = (file as unknown as { unsafeOriginalName?: string }).unsafeOriginalName;
+      if (original && original !== name) throw new Error('备份包含不安全路径 / Backup contains an unsafe path.');
+      const permissions = typeof file.unixPermissions === 'string' ? Number.parseInt(file.unixPermissions, 8) : file.unixPermissions ?? 0;
+      if ((permissions & 0xf000) === 0xa000) throw new Error('备份不能包含符号链接 / Backup must not contain symbolic links.');
+      if (file.dir || !name.includes('/chat-images/')) continue;
+      const parts = name.split('/'), leaf = parts.at(-1)!;
+      if (!isImageFileName(leaf) || !(parts.length === 3 && validId(parts[0]) && parts[1] === 'chat-images' || parts.length === 4 && parts[0] === '.trash' && validId(parts[1]) && parts[2] === 'chat-images')) throw new Error('备份图片路径无效 / Invalid backup image path.');
+      const bytes = await boundedZipImage(file); inspectChatImageBytes(bytes); imageBytes.set(name, bytes);
+    }
+    zip=await JSZip.loadAsync(data,{checkCRC32:true});
     const manifest=JSON.parse(await zip.file('folio-backup.json')?.async('string')??'null');
-    if(manifest?.format!=='folio'||manifest.version!==1||!Array.isArray(manifest.workspaces)||(manifest.removedWorkspaces!==undefined&&!Array.isArray(manifest.removedWorkspaces)))throw new Error('不是 Folio 备份文件');
+    if(manifest?.format!=='folio'||![1,2].includes(manifest.version)||!Array.isArray(manifest.workspaces)||(manifest.removedWorkspaces!==undefined&&!Array.isArray(manifest.removedWorkspaces)))throw new Error('不是 Folio 备份文件');
     const incoming: {ws:Workspace;files:Map<string,Uint8Array>;removedAt?:number}[]=[],seen=new Set<string>();
     const records=[...manifest.workspaces.map((id:unknown)=>({id,removed:false})),...(manifest.removedWorkspaces??[]).map((id:unknown)=>({id,removed:true}))];
     for(const {id,removed} of records){
@@ -475,6 +669,16 @@ export class LibraryStore {
       if(ws.id!==id)throw new Error('备份工作区 ID 不一致');
       const removedAt=removed?validateRemoval(JSON.parse(await zip.file(`${prefix}/${removalFile}`)?.async('string')??'null')):undefined;
       const files=new Map<string,Uint8Array>();
+      const images = workspaceImages(ws), expectedImagePaths = new Set<string>();
+      if (images.size && manifest.version !== 2) throw new Error('含图片备份需要格式版本 2 / Image backups require format version 2.');
+      for (const image of images.values()) {
+        const filename = `chat-images/${chatImageFilename(image)}`, key = `${prefix}/${filename}`, bytes = imageBytes.get(key);
+        if (!bytes) throw new Error('备份缺少对话图片 / Backup is missing a chat image.');
+        const actual = inspectChatImageBytes(bytes);
+        if (actual.mimeType !== image.mimeType || actual.width !== image.width || actual.height !== image.height || actual.byteSize !== image.byteSize) throw new Error('备份图片与记录不一致 / Backup image does not match its record.');
+        files.set(filename, bytes); expectedImagePaths.add(key);
+      }
+      for (const key of imageBytes.keys()) if (key.startsWith(`${prefix}/chat-images/`) && !expectedImagePaths.has(key)) throw new Error('备份包含未引用图片 / Backup contains an unreferenced image.');
       for(const doc of ws.documents){
         const file=zip.file(`${prefix}/${doc.fileName}`);if(!file)throw new Error(`备份缺少 PDF：${doc.name}`);
         const bytes=await file.async('uint8array');if(!Buffer.from(bytes.subarray(0,1024)).includes(Buffer.from('%PDF-')))throw new Error('备份 PDF 内容无效');

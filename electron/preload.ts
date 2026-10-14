@@ -12,6 +12,8 @@ const api:FolioAPI={
   updateView:(id,doc,pane,view,paneRevision)=>invoke('update-view',id,doc,pane,view,paneRevision),
   swapPanes:(id,expected)=>invoke('swap-panes',id,expected),
   readDocument:(id,doc)=>invoke('read-document',id,doc),indexDocument:(id,doc,index)=>invoke('index-document',id,doc,index),
+  readChatImage:(id,imageId)=>invoke('read-chat-image',id,imageId),
+  setDocumentPageCount:(id,docId,pageCount)=>invoke('document-page-count',id,docId,pageCount),
   exportPdf:(id,doc)=>invoke('export-pdf',id,doc),printPdf:(id,doc)=>invoke('print-pdf',id,doc),revealWorkspace:id=>invoke('reveal-workspace',id),
   saveSettings:settings=>invoke('save-settings',settings),pickFolder:kind=>invoke('pick-folder',kind),
   getUpdateStatus:()=>invoke('update-status'),checkForUpdates:()=>invoke('check-updates'),

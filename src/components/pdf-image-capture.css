@@ -1,0 +1,25 @@
+.pdf-image-capture-overlay {
+  position: absolute; inset: 0; z-index: 8; overflow: hidden;
+  cursor: crosshair; pointer-events: auto; touch-action: none; user-select: none;
+  background: rgb(105 137 105 / 5%); outline: 2px solid #788c76; outline-offset: -2px;
+}
+.pdf-image-capture-overlay:focus-visible { outline-width: 3px; }
+.pdf-image-capture-selection {
+  position: absolute; box-sizing: border-box; pointer-events: none;
+  border: 2px solid #6b856a; background: rgb(131 155 121 / 14%);
+  box-shadow: 0 0 0 5000px rgb(30 40 32 / 15%);
+}
+.pdf-image-capture-selection[hidden] { display: none; }
+.pdf-image-capture-actions {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 12;
+  display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100% - 24px);
+  padding: 9px 12px; border: 1px solid #cdd6c8; border-radius: 10px;
+  background: #fcfdf8; color: #3d503d; box-shadow: 0 3px 14px #1825171a;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+}
+.pdf-image-capture-actions span { min-width: 0; }
+.pdf-image-capture-actions button {
+  display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 5px 7px;
+  border: 0; border-radius: 6px; background: #eaf0e5; color: inherit; font: inherit; cursor: pointer;
+}
+.pdf-image-capture-actions button:focus-visible { outline: 2px solid #748b6d; outline-offset: 2px; }

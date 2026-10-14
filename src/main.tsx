@@ -7,6 +7,8 @@ import './components/workspace-refresh.css';
 import './components/pdf-refresh.css';
 import './components/assistant-refresh.css';
 import './components/library-settings-refresh.css';
+import './components/assistant-resize.css';
+import './components/vision-refresh.css';
 
 class ErrorBoundary extends React.Component<{children:React.ReactNode},{error:string}> {
   state={error:''};
