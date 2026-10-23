@@ -12,7 +12,7 @@ Pairleaf（原名 Folio）是一个学术 PDF 阅读器，支持 macOS 和 Windo
 - 选文复制、高亮、下划线、删除线和批注，支持撤销与 PDF 导出。
 - 用 DeepSeek 等 AI 服务解释选文、讨论文章、整理阅读笔记。
 - 连接本机 Qoder 代理，切换其模型，分别保存密钥并设置思考深度。[Qoder 配置说明](docs/qoder.md#中文)
-- 框选图表或附上当前 PDF 页，向支持视觉的模型提问。[读图使用说明](docs/image-reading.md#中文说明)
+- 从对话框框选 PDF 图表或附上当前页，向支持视觉的模型提问。[读图使用说明](docs/image-reading.md#中文说明)
 - 软件文字大小可单独调整，不影响 PDF 缩放。点击带引用的 AI 回答可查看出处，有准确原文片段时会高亮。
 - 使用系统语音与 AI 对话，默认关闭。[Mac 教程](docs/apple-voice.md#中文教程) · [Windows 教程](docs/windows-voice.md#中文教程)（实验性，取决于本机语音引擎）。
 - 将笔记导出到 Obsidian 或 Markdown。论文、批注和笔记保存在本地。
@@ -26,8 +26,8 @@ Pairleaf（原名 Folio）是一个学术 PDF 阅读器，支持 macOS 和 Windo
 
 | 平台 | 版本 | 下载 |
 | --- | --- | --- |
-| macOS 13+，Apple Silicon / Intel | 0.9.0 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.9.0/Pairleaf-0.9.0-mac-universal.dmg) |
-| Windows 10 / 11，x64 | 0.9.0 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.9.0/Pairleaf-0.9.0-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.9.0/Pairleaf-0.9.0-windows-x64-portable.exe) |
+| macOS 13+，Apple Silicon / Intel | 0.10.0 | [DMG 安装包](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.10.0/Pairleaf-0.10.0-mac-universal.dmg) |
+| Windows 10 / 11，x64 | 0.10.0 | [安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.10.0/Pairleaf-0.10.0-windows-x64-setup.exe) · [免安装版](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.10.0/Pairleaf-0.10.0-windows-x64-portable.exe) |
 
 若 0.7.0 从 Gitee 更新时提示链接未通过验证，请在设置中将更新来源改为 GitHub 并保存，或使用上方 GitHub 完整安装包手动更新。
 
@@ -41,7 +41,7 @@ Mac 先退出 Folio，再将 Pairleaf 拖入「应用程序」。确认原论文
 
 | 版本 | 主要变化 |
 | --- | --- |
-| 待发布 | 接入本机 Qoder 多模型、独立密钥、思考档位、读图和联网搜索。修复剪贴板权限问题；对话框可直接截图，保留草稿和浮窗位置。 |
+| [0.10.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.10.0) | 接入本机 Qoder 的 14 个模型入口，分别保存密钥，提供对应思考档位、读图和带来源引用的原生联网。修复剪贴板权限错误，对话框新增截图按钮。 |
 | [0.9.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.9.0) | 框选图表或当前 PDF 页问 AI，适配 DeepSeek、OpenAI/GPT、Anthropic/Claude、Kimi、GLM 接口中支持视觉的模型。浮窗四边四角可缩放，验证选文后仍可移动。网页来源默认折叠，正文引用可点开查看。备份包含对话图片，含图备份需 0.9.0 或更新版本恢复。 |
 | [0.8.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.8.0) | 文献库和设置更清晰紧凑，调整 PDF 工具与 AI 对话布局，改善文字对比度、键盘焦点和大字号显示。修复 Gitee 源码包识别和带签名参数的下载链接。 |
 | [0.7.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0) | 修复选段问答及重试；长文回答结合全文笔记和重新检索的原文。增加 DeepSeek、GPT、Claude、Kimi K3、GLM 原生联网搜索，沿用当前模型和 Key；新批注框悬浮在选文旁边。更新下载按网络地区优先选择大陆 Gitee、境外 GitHub，也可手动选源；发布流程同步两站。 |

@@ -17,6 +17,11 @@ public/pdf-assets/
 .netrc
 credentials*.json
 secrets*.json
+.runtime/
+model-keys.json
+key-ring.json
+QODER_MODELS_API_KEYS_FOR_CODEX.txt
+未命名.rtf
 settings.json
 settings.*.json
 *.key

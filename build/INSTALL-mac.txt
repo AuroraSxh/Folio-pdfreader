@@ -1,9 +1,9 @@
-Pairleaf 0.9.0 — 学术 PDF 阅读器（原 Folio）
+Pairleaf 0.10.0 — 学术 PDF 阅读器（原 Folio）
 macOS 13 或更高版本；通用应用支持 Apple Silicon 与 Intel。
 
 安装与更新
 1. 退出正在运行的 Pairleaf 或 Folio。
-2. 打开 Pairleaf-0.9.0-mac-universal.dmg，将 Pairleaf 拖入 Applications（应用程序）。已有 Pairleaf 时选择「替换」。
+2. 打开 Pairleaf-0.10.0-mac-universal.dmg，将 Pairleaf 拖入 Applications（应用程序）。已有 Pairleaf 时选择「替换」。
 3. 等待复制完成，弹出磁盘映像，再从「应用程序」打开 Pairleaf。
 如果使用 ZIP，先解压出 Pairleaf.app，再拖入 Applications；不要把 ZIP 改名为 DMG。
 首次从 Folio 更名更新时，Pairleaf.app 不会自动替换 Folio.app。确认原论文和设置正常后，可只移除旧 Folio.app，保留论文库、设置和钥匙串。不要同时运行新旧版本编辑同一论文库。
@@ -15,11 +15,13 @@ Apple 说明：https://support.apple.com/zh-cn/102445
 阅读与 AI
 导入正文和补充 PDF，核对自动填入的文章名称后确认。两栏独立缩放，拖动 PDF 顶部标签或手柄到另一栏，可交换左右或上下位置并保留阅读状态。
 AI 需要在设置中自行填写 API Key；安装包不包含个人密钥、论文或笔记。离线阅读无需 Key。
+使用 Qoder 时，需自行配置并保持本机代理运行。在「设置 → AI 阅读助手 → Qoder」选择型号，填入该型号的专用 Key，点击「设为默认」后保存。各型号密钥分别保存；请求使用你的 Qoder 账号与额度，Pairleaf 不内置代理或密钥。
+Qoder 配置：https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/qoder.md
 「智能问答」从所选正文和补充材料的已提取全文中查找相关段落；短文可以完整传入。
 「整篇精读」分批处理全部可提取文字，显示进度和范围，并复用本地证据笔记。可输入问题，或留空生成全文摘要。
 整篇精读会增加模型调用次数、耗时与费用；智能问答有时也会增加一次检索词转换请求。语音对话使用智能问答。
 扫描件尚无 OCR；文字覆盖范围不代表 AI 看到了图片。无法提取文字的页面会提示，请结合原文核对答案。
-图片问答：在 PDF 工具栏选择「框选图表问 AI」或「发送当前页给 AI」，检查阅读伙伴中的预览后发送。沿用支持视觉的当前模型和 API Key；图片计入 API 用量，不会自动发送整篇 PDF 的所有图片。含图片的备份需用 Pairleaf 0.9.0 或更新版本恢复。
+图片问答：点击对话框的「截图」框选当前阅读区，或在 PDF 工具栏选择「框选图表问 AI」「发送当前页给 AI」，检查预览后发送。沿用支持视觉的当前模型和 API Key；图片计入 API 用量，不会自动发送整篇 PDF 的所有图片。含图片的备份需用 Pairleaf 0.9.0 或更新版本恢复。
 在设置中可切换中文/English、调整软件字号、连接 Obsidian 和检查更新；PDF 缩放与软件字号独立。
 
 语音
@@ -33,20 +35,21 @@ AI 需要在设置中自行填写 API Key；安装包不包含个人密钥、论
 已移除文章不会自动过期，可从「已移除文章」恢复；只有再次确认「彻底删除」才永久删除。
 
 English
-Pairleaf 0.9.0 supports macOS 13 or later, on Apple Silicon and Intel.
-Quit Pairleaf or Folio, open Pairleaf-0.9.0-mac-universal.dmg, and drag Pairleaf into Applications. Choose Replace for an existing Pairleaf installation. Wait for copying, eject the image, and open the app from Applications.
+Pairleaf 0.10.0 supports macOS 13 or later, on Apple Silicon and Intel.
+Quit Pairleaf or Folio, open Pairleaf-0.10.0-mac-universal.dmg, and drag Pairleaf into Applications. Choose Replace for an existing Pairleaf installation. Wait for copying, eject the image, and open the app from Applications.
 If using the ZIP, extract Pairleaf.app and move it into Applications. Do not rename the ZIP to DMG.
 For the first Folio-to-Pairleaf update, the names differ, so Finder will not replace Folio.app automatically. Check your papers and settings before removing only the old app. Keep the library, settings, and Keychain; do not run both versions against one library.
 This build is ad-hoc signed, without Apple Developer ID signing or notarization. After verifying the download's source, follow Apple's instructions for an unverified-developer prompt: https://support.apple.com/102445
 
 Import the paper and supplements, check the suggested title, and confirm it. Drag a PDF tab or grip onto the other pane to swap side-by-side or stacked views while keeping reading positions and zoom.
 AI requires your own API key; offline reading does not. No personal keys, papers, or notes are bundled. Smart Q&A retrieves passages throughout the selected documents; short documents can fit in full. Full-paper reading processes all extractable text in batches, shows progress and coverage, and reuses evidence notes. Enter a question or leave it blank for a full summary.
+For Qoder, configure and keep your local bridge running. In Settings → AI → Qoder, choose a model, enter its dedicated key, click Set as default, and save. Keys are saved separately for each model. Requests use your Qoder account and quota; Pairleaf does not bundle the bridge or keys. The bilingual Qoder setup guide is linked above.
 Full-paper reading makes more model calls and can take longer and cost more; Smart Q&A may make an extra query-expansion request. Voice conversations use Smart Q&A. OCR is not included, and text coverage does not imply image understanding. Check answers against the paper.
-Image questions: choose Select figure for AI or Send current page to AI in the PDF toolbar, review the attachment, and send. This uses your selected vision-capable model and API key. Images count toward API usage; the app does not automatically send every PDF page image. Backups containing images require Pairleaf 0.9.0 or later to restore.
+Image questions: use Capture image below the chat input to select a region in the active PDF, or choose Select figure for AI or Send current page to AI in the PDF toolbar. Review the attachment and send. This uses your selected vision-capable model and API key. Images count toward API usage; the app does not automatically send every PDF page image. Backups containing images require Pairleaf 0.9.0 or later to restore.
 Settings lets you change the language and app text size, connect Obsidian, and check for updates. PDF zoom is independent of app text size.
 
 Voice is off by default. Voice opens options; Start listening uses the microphone. Preview needs no key or microphone. Download enhanced/premium voices in macOS System Settings → Accessibility → Read & Speak, then refresh voices in Pairleaf and select Chinese and English separately. Changing the Mac default does not override saved app choices. The bilingual voice guide is linked above.
 The default library remains Documents/Folio Library, and settings remain in ~/Library/Application Support/Folio. Custom paths and the Folio Safe Storage Keychain name are preserved. Enter any requested Keychain password only in the system dialog. Removed papers stay recoverable until you explicitly confirm permanent deletion.
 
-下载 / Downloads: https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.9.0
+下载 / Downloads: https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.10.0
 更名说明 / Migration: https://github.com/AuroraSxh/Folio-pdfreader/blob/main/docs/rename-pairleaf.md

@@ -1,6 +1,6 @@
 {
   "name": "folio-paper-reader",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "A local-first academic PDF workspace with side-by-side reading and an AI companion",
   "author": "Pairleaf",
   "private": true,
@@ -66,7 +66,7 @@
     "appId": "com.folio.paperreader",
     "productName": "Pairleaf",
     "directories": {
-      "output": "release/v0.9.0"
+      "output": "release/v0.10.0"
     },
     "files": [
       "dist/**/*",

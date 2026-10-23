@@ -12,7 +12,7 @@ A desktop PDF reader for academic papers, previously called Folio. Keep a paper 
 - Copy text, highlight, underline, strike through, and add comments. Undo edits and export annotated PDFs.
 - Ask DeepSeek or another supported AI provider to explain passages and help with reading notes.
 - Connect a local Qoder bridge and switch between its models, with separate saved keys and model-specific thinking controls. [Qoder setup](docs/qoder.md#english)
-- Attach a selected figure or the current PDF page to a question for a vision-capable model. [Image reading guide](docs/image-reading.md#english-guide)
+- Capture a PDF figure from the chat input or attach the current page, then ask a vision-capable model. [Image reading guide](docs/image-reading.md#english-guide)
 - Adjust interface text size independently of PDF zoom. Click a cited AI answer to find its source; exact excerpts are highlighted.
 - Talk to the AI using system speech, off by default. [Mac setup](docs/apple-voice.md#english-guide) · [Windows setup](docs/windows-voice.md#english-guide) (experimental; requires a compatible local speech engine).
 - Export notes to Obsidian or Markdown. Papers, annotations, and notes stay on your computer.
@@ -26,8 +26,8 @@ A desktop PDF reader for academic papers, previously called Folio. Keep a paper 
 
 | Platform | Version | Download |
 | --- | --- | --- |
-| macOS 13+, Apple Silicon / Intel | 0.9.0 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.9.0/Pairleaf-0.9.0-mac-universal.dmg) |
-| Windows 10 / 11, x64 | 0.9.0 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.9.0/Pairleaf-0.9.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.9.0/Pairleaf-0.9.0-windows-x64-portable.exe) |
+| macOS 13+, Apple Silicon / Intel | 0.10.0 | [Universal DMG](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.10.0/Pairleaf-0.10.0-mac-universal.dmg) |
+| Windows 10 / 11, x64 | 0.10.0 | [Installer](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.10.0/Pairleaf-0.10.0-windows-x64-setup.exe) · [Portable](https://github.com/AuroraSxh/Folio-pdfreader/releases/download/v0.10.0/Pairleaf-0.10.0-windows-x64-portable.exe) |
 
 If 0.7.0 reports that a Gitee update link could not be verified, change the update source to GitHub in Settings and save, or update manually using a complete GitHub installer above.
 
@@ -41,7 +41,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
-| Unreleased | Add local Qoder models, separate saved keys, thinking controls, image input and web search. Fix clipboard permission errors. Capture PDF figures from the chat input while preserving drafts and panel position. |
+| [0.10.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.10.0) | Add 14 local Qoder model entries with separate keys, supported thinking levels, image input and native web search with citations. Fix clipboard permission errors and add a capture button to chat. |
 | [0.9.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.9.0) | Ask about a selected figure or PDF page using vision-capable models through DeepSeek, OpenAI/GPT, Anthropic/Claude, Kimi and GLM interfaces. Resize the floating companion from every edge and corner; movement with selected text verified. Web sources fold away and inline citations open source details. Backups preserve attached images; restoring these backups requires 0.9.0 or later. |
 | [0.8.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.8.0) | Clearer, more compact library and settings; refined PDF tools and AI conversation layouts. Improve text contrast, keyboard focus and large-text layouts. Fix Gitee source-archive detection and signed download URLs. |
 | [0.7.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0) | Fix selected-passage questions and retries; combine full-paper notes with fresh retrieval of original passages. Add native web search for DeepSeek, GPT, Claude, Kimi K3 and GLM using the selected model and key. New comments float beside selected text. Choose Gitee in mainland China and GitHub elsewhere for updates, with a manual source setting and publishing to both sites. |
