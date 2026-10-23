@@ -6,7 +6,7 @@ const api:FolioAPI={
   platform:process.platform==='darwin'?'darwin':process.platform==='win32'?'win32':'linux',
   bootstrap:()=>invoke('bootstrap'),createWorkspace:paths=>invoke('create-workspace',paths),importDocuments:(id,paths)=>invoke('import-documents',id,paths),createDemo:()=>invoke('demo'),
   updateWorkspace:(id,patch)=>invoke('update-workspace',id,patch),deleteWorkspace:id=>invoke('delete-workspace',id),
-  listRemovedWorkspaces:()=>invoke('list-removed-workspaces'),restoreWorkspace:id=>invoke('restore-workspace',id),purgeWorkspace:id=>invoke('purge-workspace',id),copyText:text=>invoke('copy-text',text),
+  listRemovedWorkspaces:()=>invoke('list-removed-workspaces'),restoreWorkspace:id=>invoke('restore-workspace',id),purgeWorkspace:id=>invoke('purge-workspace',id),copyText:text=>invoke('copy-text',text),readClipboardText:()=>invoke('read-clipboard-text'),
   updateDocument:(id,doc,patch)=>invoke('update-document',id,doc,patch),removeDocument:(id,doc)=>invoke('remove-document',id,doc),
   undoDocumentEdit:(id,direction)=>invoke('undo-document-edit',id,direction),getDocumentEditHistory:id=>invoke('document-edit-history',id),nativeEdit:action=>invoke('native-edit',action),
   updateView:(id,doc,pane,view,paneRevision)=>invoke('update-view',id,doc,pane,view,paneRevision),

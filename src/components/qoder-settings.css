@@ -1,0 +1,48 @@
+.fl-refresh-settings .fl-provider-grid.fl-provider-grid-with-qoder {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(112px * var(--ui-font-scale, 1))), 1fr));
+}
+.fl-provider-grid-with-qoder > button { min-width: 0; }
+.fl-refresh-settings .fl-qoder-settings {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--fl-border);
+  border-radius: 9px;
+  background: var(--fl-bg);
+  min-width: 0;
+}
+.fl-qoder-intro { display: flex; align-items: flex-start; gap: 10px; }
+.fl-qoder-intro > svg { flex: none; margin-top: 3px; color: var(--fl-green); }
+.fl-qoder-intro > div { min-width: 0; }
+.fl-qoder-intro strong { font-size: calc(12px * var(--ui-font-scale, 1)); line-height: 1.6; }
+.fl-qoder-intro p,
+.fl-qoder-default-thinking,
+.fl-qoder-web-help {
+  margin: 5px 0 0;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.7;
+  color: var(--fl-muted);
+  overflow-wrap: anywhere;
+}
+.fl-qoder-capabilities { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.fl-qoder-capabilities > :is(code, span) {
+  padding: 3px 8px;
+  border: 1px solid var(--fl-border);
+  border-radius: 5px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  color: var(--fl-green);
+  background: var(--fl-green-soft);
+}
+.fl-qoder-capabilities > code { color: var(--fl-muted); background: var(--fl-surface); }
+.fl-refresh-settings .fl-qoder-settings .fl-field { min-width: 0; }
+.fl-refresh-settings .fl-qoder-settings select { width: 100%; max-width: 100%; min-width: 0; }
+.fl-qoder-web-help { border-top: 1px solid var(--fl-border); padding-top: 12px; margin-top: 14px; }
+
+@media (max-width: 1100px) {
+  /* Keep the icons/padding fixed and give larger navigation text a little more
+     room. At 150%, this adds 34px without crowding the settings fields. */
+  .fl-settings-modal.fl-refresh-settings .fl-settings-nav {
+    width: calc(96px + 68px * var(--ui-font-scale, 1));
+  }
+}

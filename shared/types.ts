@@ -2,8 +2,9 @@ import type { ReadingMode, ReadingReport } from './reading';
 import type { WebSearchResult } from './web-search';
 import type { DraftChatImage, StoredChatImage } from './images';
 export type { DraftChatImage, StoredChatImage, ChatImageSource } from './images';
-export type ProviderId = 'deepseek' | 'openai' | 'anthropic' | 'custom';
-export interface ProviderConfig { id: ProviderId; apiKey?: string; hasKey?: boolean; baseURL: string; model: string; maxTokens: number; thinking?: boolean; reasoningEffort?: 'low'|'high'|'max'; vision?: 'auto'|'enabled'|'disabled' }
+export type ProviderId = 'deepseek' | 'openai' | 'anthropic' | 'custom' | 'qoder';
+export type ReasoningEffort = 'low'|'medium'|'high'|'xhigh'|'max';
+export interface ProviderConfig { id: ProviderId; apiKey?: string; hasKey?: boolean; baseURL: string; model: string; maxTokens: number; thinking?: boolean; reasoningEffort?: ReasoningEffort; vision?: 'auto'|'enabled'|'disabled'; /** Read-only Qoder key availability. Plaintext keys are never returned. */ modelKeyStatus?: Record<string,boolean> }
 export interface Settings {
   language: import('./i18n').Language;
   autoCheckUpdates: boolean;
@@ -66,6 +67,7 @@ export interface FolioAPI {
   restoreWorkspace(id: string): Promise<Workspace>;
   purgeWorkspace(id: string): Promise<boolean>;
   copyText(text: string): Promise<void>;
+  readClipboardText(): Promise<string>;
   updateDocument(workspaceId: string, documentId: string, patch: Partial<Pick<PaperDocument, 'name'|'role'|'outline'|'annotations'|'view'>>): Promise<Workspace>;
   undoDocumentEdit(workspaceId: string, direction: 'undo'|'redo'): Promise<Workspace>;
   getDocumentEditHistory(workspaceId: string): Promise<DocumentEditHistory>;

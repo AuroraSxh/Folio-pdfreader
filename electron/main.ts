@@ -47,6 +47,7 @@ if(primaryInstance){
   });
 }
 const printWindows=new Set<BrowserWindow>();
+const MAX_CLIPBOARD_TEXT_BYTES=5*1024*1024;
 const devURL=process.env.VITE_DEV_SERVER_URL;
 const appFile=path.join(__dirname,'../dist/index.html');
 let initialized=false;
@@ -206,7 +207,15 @@ function registerIPC(){
     if(result.response!==0)return false;
     await library.purgeRemoved(id,removed.removedAt);return true;
   });
-  handle('copy-text',(text:string)=>{if(typeof text!=='string'||Buffer.byteLength(text,'utf8')>5*1024*1024)throw new Error(t("复制内容必须是 5 MB 以内的文字","Copied content must be text no larger than 5 MB."));clipboard.writeText(text);});
+  handle('copy-text',(text:string)=>{if(typeof text!=='string'||Buffer.byteLength(text,'utf8')>MAX_CLIPBOARD_TEXT_BYTES)throw new Error(t("复制内容必须是 5 MB 以内的文字","Copied content must be text no larger than 5 MB."));return clipboard.writeText(text);});
+  handle('read-clipboard-text',async()=>{
+    // Only the trusted main frame can request plain text. No generic clipboard
+    // formats, selection clipboard or browser-wide clipboard permission is exposed.
+    let text:string;
+    try{text=await clipboard.readText();}catch{throw new Error(t("无法读取剪贴板，请使用粘贴快捷键重试。","Unable to read the clipboard. Try the paste keyboard shortcut."));}
+    if(Buffer.byteLength(text,'utf8')>MAX_CLIPBOARD_TEXT_BYTES)throw new Error(t("剪贴板文字超过 5 MB，请复制较短的内容。","Clipboard text exceeds 5 MB. Copy a shorter passage."));
+    return text;
+  });
   handle('update-document',(id:string,doc:string,patch:Partial<PaperDocument>)=>library.patchDocument(id,doc,patch));
   handle('undo-document-edit',(id:string,direction:'undo'|'redo')=>library.undoDocumentEdit(id,direction));
   handle('document-edit-history',(id:string)=>library.getDocumentEditHistory(id));

@@ -12,7 +12,7 @@ function answer(text = 'The visible figure supports this statement. [Main.pdf p.
 }
 function fixture() {
   const provider: ProviderConfig = { id: 'deepseek', baseURL: 'https://api.deepseek.com', model: 'deepseek-flash', apiKey: 'vision-fixture-key', maxTokens: 4096 };
-  const settings: Settings = { language: 'en', autoCheckUpdates: false, activeProvider: 'deepseek', providers: { deepseek: provider, openai: { ...provider, id: 'openai' }, anthropic: { ...provider, id: 'anthropic' }, custom: { ...provider, id: 'custom' } },
+  const settings: Settings = { language: 'en', autoCheckUpdates: false, activeProvider: 'deepseek', providers: { deepseek: provider, openai: { ...provider, id: 'openai' }, anthropic: { ...provider, id: 'anthropic' }, custom: { ...provider, id: 'custom' }, qoder: { ...provider, id: 'qoder', baseURL: 'http://127.0.0.1:8788/v1', model: 'kmodel_latest' } },
     libraryPath: '/unused', vaultPath: '', obsidianSubfolder: '', autoSummary: false, autoMemory: false, contextMaxChars: 12000, theme: 'light', readingTheme: 'white', annotationToolbar: 'floating' };
   const workspace: Workspace = { version: 1, id: 'paper', title: 'Paper', authors: '', journal: '', doi: '', tags: [], favorite: false, createdAt: 1, updatedAt: 1, lastReadAt: 1,
     notes: '', memories: [], memoryIndex: '', activeConversationId: 'conversation', conversations: [{ id: 'conversation', title: 'Questions', createdAt: 1, messages: [] }],

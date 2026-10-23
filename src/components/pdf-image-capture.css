@@ -23,3 +23,20 @@
   border: 0; border-radius: 6px; background: #eaf0e5; color: inherit; font: inherit; cursor: pointer;
 }
 .pdf-image-capture-actions button:focus-visible { outline: 2px solid #748b6d; outline-offset: 2px; }
+
+/* Keep the floating companion mounted and its geometry intact while selecting
+   the PDF underneath it. Docked companions keep their existing layout. */
+.assistant-shell.is-overlay.assistant-capture-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+.fl-composer-bottom > .fl-capture-image {
+  color: var(--accent);
+}
+.fl-composer-bottom > .fl-capture-image[aria-pressed="true"] {
+  background: var(--soft);
+}
+.fl-composer-bottom > .fl-capture-image:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

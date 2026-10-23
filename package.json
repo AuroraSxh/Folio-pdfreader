@@ -35,7 +35,9 @@
     "test:update-sources": "node scripts/e2e-update-sources.mjs",
     "release:publish": "node scripts/publish-release.mjs",
     "test:assistant-resize": "node scripts/e2e-assistant-resize.mjs",
-    "test:image-reading": "node scripts/e2e-image-reading.mjs"
+    "test:image-reading": "node scripts/e2e-image-reading.mjs",
+    "test:composer-capture": "node scripts/e2e-composer-capture.mjs",
+    "test:qoder-settings": "node scripts/e2e-qoder-settings.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.577.0",

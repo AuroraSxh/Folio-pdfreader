@@ -40,6 +40,8 @@ interface PdfPaneProps {
   onAsk: (selection: TextSelection) => void;
   onAskImage?: (image: DraftChatImage) => void;
   imageContextKey?: string;
+  imageCaptureRequest?: { nonce: number };
+  onImageCaptureFinished?: (nonce: number) => void;
   onSplit?: (direction: 'vertical' | 'horizontal' | 'none') => void;
   onError: (message: string) => void;
 }
@@ -48,6 +50,7 @@ interface SelectionBundle extends CommentSelectionOwner { parts: TextSelection[]
 interface ImageCaptureSession {
   workspaceId: string; documentId: string; documentName: string; contextKey?: string;
   page: number; rotation: number; viewport: CaptureViewport; element: HTMLElement;
+  requestNonce?: number;
   onAskImage: (image: DraftChatImage) => void;
 }
 type SidebarTab = 'outline' | 'thumbnails' | 'annotations';
@@ -208,11 +211,21 @@ export default function PdfPane(props: PdfPaneProps) {
   const imageCaptureRef = useRef<ImageCaptureSession | null>(null);
   const imageRenderRef = useRef<AbortController | null>(null);
   const [imageCapturing, setImageCapturing] = useState(false);
-  const cancelImageCapture = useCallback(() => {
+  const externalImageCapture = useRef<{ nonce: number; finish?: (nonce: number) => void } | null>(null);
+  const lastCaptureRequest = useRef<number | undefined>(undefined);
+  const finishImageCaptureRequest = useCallback(() => {
+    const request = externalImageCapture.current;
+    externalImageCapture.current = null;
+    request?.finish?.(request.nonce);
+  }, []);
+  const resetImageCapture = useCallback(() => {
     imageCaptureRef.current = null;
     imageRenderRef.current?.abort(); imageRenderRef.current = null;
     if (mounted.current) { setImageCapture(null); setImageCapturing(false); }
   }, []);
+  const cancelImageCapture = useCallback(() => {
+    resetImageCapture(); finishImageCaptureRequest();
+  }, [resetImageCapture, finishImageCaptureRequest]);
 
   const currentImageSession = useCallback((): ImageCaptureSession | null => {
     const current = latest.current, viewer = viewerRef.current;
@@ -226,11 +239,18 @@ export default function PdfPane(props: PdfPaneProps) {
 
   const capturePageImage = useCallback(async (session: ImageCaptureSession, rect?: CaptureRect) => {
     const viewer = viewerRef.current, pdfDocument = viewer?.pdfDocument;
-    if (!viewer || !pdfDocument) return;
+    const rejectExternalCapture = () => {
+      if (externalImageCapture.current?.nonce === session.requestNonce && session.requestNonce !== undefined) cancelImageCapture();
+    };
+    if (!viewer || !pdfDocument) { rejectExternalCapture(); return; }
     const stillCurrent = () => latest.current.workspaceId === session.workspaceId && latest.current.document.id === session.documentId
-      && latest.current.imageContextKey === session.contextKey && viewerRef.current === viewer && viewer.currentPageNumber === session.page;
-    if (!stillCurrent()) return;
-    cancelImageCapture();
+      && latest.current.imageContextKey === session.contextKey
+      && (session.requestNonce === undefined || latest.current.active && latest.current.imageCaptureRequest?.nonce === session.requestNonce)
+      && viewerRef.current === viewer && viewer.currentPageNumber === session.page;
+    if (!stillCurrent()) { rejectExternalCapture(); return; }
+    // Clearing the selection overlay starts rendering; the composer request
+    // stays active until the pixels are ready, cancelled, or fail to render.
+    resetImageCapture();
     const abort = new AbortController(); imageRenderRef.current = abort; setImageCapturing(true);
     try {
       const pdfPage = await pdfDocument.getPage(session.page);
@@ -244,15 +264,26 @@ export default function PdfPane(props: PdfPaneProps) {
     } catch (error) {
       if (!abort.signal.aborted && mounted.current && stillCurrent()) latest.current.onError(latest.current.t('无法截取 PDF 图像：{error}', 'Unable to capture the PDF image: {error}', { error: messageOf(error) }));
     } finally {
-      if (imageRenderRef.current === abort) { imageRenderRef.current = null; if (mounted.current) setImageCapturing(false); }
+      if (imageRenderRef.current === abort) {
+        imageRenderRef.current = null;
+        if (mounted.current) setImageCapturing(false);
+        finishImageCaptureRequest();
+      }
     }
-  }, [cancelImageCapture]);
+  }, [resetImageCapture, finishImageCaptureRequest, cancelImageCapture]);
 
-  const beginImageCapture = (wholePage = false) => {
-    if (imageRenderRef.current) return;
+  const beginImageCapture = (wholePage = false, request?: { nonce: number; finish?: (nonce: number) => void }) => {
+    if (imageRenderRef.current) { request?.finish?.(request.nonce); return; }
     const session = currentImageSession();
-    if (!session) return;
+    if (!session) {
+      if (request) {
+        request.finish?.(request.nonce);
+        latest.current.onError(latest.current.t('PDF 页面仍在加载，请稍后再截图。', 'The PDF page is still loading. Try capturing it again in a moment.'));
+      }
+      return;
+    }
     cancelImageCapture(); clearTimeout(captureTimer.current);
+    if (request) { externalImageCapture.current = request; session.requestNonce = request.nonce; }
     props.onActivate(); setOptionsOpen(false); setContextMenu(null); setSelection(null); setNewComment(false); setHighlightArmed(false);
     window.getSelection()?.removeAllRanges();
     if (wholePage) void capturePageImage(session);
@@ -261,7 +292,14 @@ export default function PdfPane(props: PdfPaneProps) {
 
   useEffect(() => { cancelImageCapture(); }, [workspaceId, paper.id, props.imageContextKey, cancelImageCapture]);
   useEffect(() => { if (!active) cancelImageCapture(); }, [active, cancelImageCapture]);
-  useEffect(() => () => { imageRenderRef.current?.abort(); }, []);
+  useEffect(() => () => { imageRenderRef.current?.abort(); finishImageCaptureRequest(); }, [finishImageCaptureRequest]);
+  useEffect(() => {
+    const request = props.imageCaptureRequest;
+    if (!request) { if (externalImageCapture.current) cancelImageCapture(); return; }
+    if (lastCaptureRequest.current === request.nonce) return;
+    lastCaptureRequest.current = request.nonce;
+    beginImageCapture(false, { nonce: request.nonce, finish: props.onImageCaptureFinished });
+  }, [props.imageCaptureRequest?.nonce]);
 
   useEffect(() => {
     if (!imageCapture && !imageCapturing) return;

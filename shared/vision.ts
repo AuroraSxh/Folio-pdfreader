@@ -1,4 +1,5 @@
 import type { ProviderConfig } from './types';
+import { getQoderModel, isQoderEndpoint } from './qoder';
 
 export interface VisionCapability {
   status: 'supported' | 'unsupported' | 'unknown';
@@ -46,6 +47,14 @@ export function getVisionCapability(config: Config | null | undefined): VisionCa
   const result = (status: VisionCapability['status'], zh: string, en: string, docs?: string, suggestion = generic): VisionCapability => ({ status, reason: bilingual(zh, en), suggestion, ...(docs ? { docs } : {}) });
   if (!config || !config.model?.trim()) return result('unsupported', '尚未选择模型。', 'No model is selected.');
   if (config.vision === 'disabled') return result('unsupported', '此服务配置已关闭图片输入。', 'Image input is disabled for this configuration.');
+  if (config.id === 'qoder') {
+    if (!isQoderEndpoint(config.baseURL)) return result('unsupported','Qoder 图片输入仅允许已配置的本机 HTTP 回环接口。','Qoder image input requires the configured local HTTP loopback endpoint.');
+    const model = getQoderModel(config.model);
+    if (!model) return result('unknown','尚未确认此 Qoder 型号的图片能力，请选择模型目录中的型号。','Image support for this Qoder model is unknown. Choose a catalog model.');
+    return model.vision
+      ? result('supported','本机 Qoder 模型目录声明此型号支持图片输入。','The local Qoder model catalog advertises image input for this model.',undefined,bilingual('图片使用当前型号与其对应密钥，经本机代理发送至 Qoder 上游服务。','Images use the selected model and its matching key, through the local proxy to Qoder’s upstream service.'))
+      : result('unsupported','本机 Qoder 目录未为此型号启用图片输入。','The local Qoder catalog does not enable image input for this model.');
+  }
   let origin = '', pathname = '';
   try { const url = new URL(config.baseURL); if (!url.username && !url.password && !url.search && !url.hash && url.protocol === 'https:') { origin = url.origin; pathname = url.pathname.replace(/\/+$/, ''); } } catch { /* Unknown endpoint requires explicit confirmation. */ }
   const model = config.model.trim().toLowerCase();

@@ -11,6 +11,7 @@ A desktop PDF reader for academic papers, previously called Folio. Keep a paper 
 - Read main and supplementary PDFs side by side or stacked, with independent scrolling and zoom.
 - Copy text, highlight, underline, strike through, and add comments. Undo edits and export annotated PDFs.
 - Ask DeepSeek or another supported AI provider to explain passages and help with reading notes.
+- Connect a local Qoder bridge and switch between its models, with separate saved keys and model-specific thinking controls. [Qoder setup](docs/qoder.md#english)
 - Attach a selected figure or the current PDF page to a question for a vision-capable model. [Image reading guide](docs/image-reading.md#english-guide)
 - Adjust interface text size independently of PDF zoom. Click a cited AI answer to find its source; exact excerpts are highlighted.
 - Talk to the AI using system speech, off by default. [Mac setup](docs/apple-voice.md#english-guide) · [Windows setup](docs/windows-voice.md#english-guide) (experimental; requires a compatible local speech engine).
@@ -40,6 +41,7 @@ Mac builds are not Developer ID signed or notarized; Windows builds are unsigned
 
 | Version | Changes |
 | --- | --- |
+| Unreleased | Add local Qoder models, separate saved keys, thinking controls, image input and web search. Fix clipboard permission errors. Capture PDF figures from the chat input while preserving drafts and panel position. |
 | [0.9.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.9.0) | Ask about a selected figure or PDF page using vision-capable models through DeepSeek, OpenAI/GPT, Anthropic/Claude, Kimi and GLM interfaces. Resize the floating companion from every edge and corner; movement with selected text verified. Web sources fold away and inline citations open source details. Backups preserve attached images; restoring these backups requires 0.9.0 or later. |
 | [0.8.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.8.0) | Clearer, more compact library and settings; refined PDF tools and AI conversation layouts. Improve text contrast, keyboard focus and large-text layouts. Fix Gitee source-archive detection and signed download URLs. |
 | [0.7.0](https://github.com/AuroraSxh/Folio-pdfreader/releases/tag/v0.7.0) | Fix selected-passage questions and retries; combine full-paper notes with fresh retrieval of original passages. Add native web search for DeepSeek, GPT, Claude, Kimi K3 and GLM using the selected model and key. New comments float beside selected text. Choose Gitee in mainland China and GitHub elsewhere for updates, with a manual source setting and publishing to both sites. |

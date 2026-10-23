@@ -1,13 +1,21 @@
 import type { ProviderConfig } from './types';
+import { getQoderModel, isQoderEndpoint } from './qoder';
 
 export interface WebSearchSource { title: string; url: string; snippet: string; publishedAt?: string }
-export interface WebSearchResult { query: string; sources: WebSearchSource[]; searchedAt: number; /** Provider-generated search summary, never a raw webpage excerpt. */ summary?: string }
-export type NativeWebSearchProvider = 'deepseek' | 'openai' | 'anthropic' | 'kimi' | 'glm';
+export interface QoderWebCallEvidence {
+  id: string; name: 'WebSearch' | 'WebFetch'; status: 'success' | 'error' | 'pending';
+  sources: string[]; query?: string; url?: string; resultCount?: number; statusCode?: number;
+  contentKind?: 'sdk_extracted_or_summarized_page';
+}
+export interface QoderWebEvidence { maxCalls: number; successfulSearches: number; successfulFetches: number; calls: QoderWebCallEvidence[] }
+export interface WebSearchResult { query: string; sources: WebSearchSource[]; searchedAt: number; /** Provider-generated search summary, never a raw webpage excerpt. */ summary?: string; qoderEvidence?: QoderWebEvidence }
+export type NativeWebSearchProvider = 'deepseek' | 'openai' | 'anthropic' | 'kimi' | 'glm' | 'qoder';
 type SearchConfig = Pick<ProviderConfig, 'id' | 'baseURL'> & Partial<Pick<ProviderConfig, 'model'>>;
 
 /** Keep credentials on the selected provider's official route; never infer a gateway's capabilities. */
 export function webSearchProvider(config: SearchConfig | null | undefined): NativeWebSearchProvider | null {
   if (!config) return null;
+  if (config.id === 'qoder') return isQoderEndpoint(config.baseURL) && getQoderModel(config.model) ? 'qoder' : null;
   try {
     const url = new URL(config.baseURL);
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return null;

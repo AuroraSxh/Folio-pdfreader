@@ -9,7 +9,7 @@ import type { WebSearchResult } from '../shared/web-search';
 function fixture(unindexed = false) {
   const provider: ProviderConfig = { id: 'deepseek', baseURL: 'https://api.deepseek.com', model: 'deepseek-pro', apiKey: 'fixture-provider-credential', maxTokens: 4096 };
   const settings: Settings = { language: 'en', autoCheckUpdates: false, activeProvider: 'deepseek',
-    providers: { deepseek: provider, openai: { ...provider, id: 'openai' }, anthropic: { ...provider, id: 'anthropic' }, custom: { ...provider, id: 'custom' } },
+    providers: { deepseek: provider, openai: { ...provider, id: 'openai' }, anthropic: { ...provider, id: 'anthropic' }, custom: { ...provider, id: 'custom' }, qoder: { ...provider, id: 'qoder', baseURL: 'http://127.0.0.1:8788/v1', model: 'kmodel_latest' } },
     libraryPath: '/unused', vaultPath: '', obsidianSubfolder: '', autoSummary: false, autoMemory: false, contextMaxChars: 12000,
     theme: 'light', readingTheme: 'white', annotationToolbar: 'floating' };
   const workspace: Workspace = { version: 1, id: 'paper', title: 'An unrelated paper', authors: '', journal: '', doi: '', tags: [], favorite: false,

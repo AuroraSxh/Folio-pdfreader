@@ -24,7 +24,7 @@ function config(baseURL = 'https://api.deepseek.com'): ProviderConfig {
 function settings(baseURL = 'https://api.deepseek.com'): Settings {
   const provider = config(baseURL);
   return { language: 'zh-CN', autoCheckUpdates: false, activeProvider: 'deepseek',
-    providers: { deepseek: provider, openai: { ...provider, id: 'openai' }, anthropic: { ...provider, id: 'anthropic' }, custom: { ...provider, id: 'custom' } },
+    providers: { deepseek: provider, openai: { ...provider, id: 'openai' }, anthropic: { ...provider, id: 'anthropic' }, custom: { ...provider, id: 'custom' }, qoder: { ...provider, id: 'qoder', baseURL: 'http://127.0.0.1:8788/v1', model: 'kmodel_latest' } },
     libraryPath: '/tmp/reading-fixture', vaultPath: '', obsidianSubfolder: '', autoSummary: false, autoMemory: false,
     contextMaxChars: 12000, theme: 'light', readingTheme: 'white', annotationToolbar: 'floating' };
 }

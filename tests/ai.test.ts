@@ -16,7 +16,7 @@ function workspace(): Workspace {
 }
 function settings(baseURL: string): Settings {
   const make = (id: ProviderConfig['id']): ProviderConfig => ({ id, apiKey: 'test-key', baseURL, model: 'deepseek-flash', maxTokens: 4096, thinking: true, reasoningEffort: 'high' });
-  return { language:'zh-CN', autoCheckUpdates:true, activeProvider: 'deepseek', providers: { deepseek: make('deepseek'), openai: make('openai'), anthropic: make('anthropic'), custom: make('custom') }, libraryPath: '/tmp/library', vaultPath: '', obsidianSubfolder: '', autoSummary: false, autoMemory: false, contextMaxChars: 12000, theme: 'light', readingTheme: 'white', annotationToolbar: 'floating' };
+  return { language:'zh-CN', autoCheckUpdates:true, activeProvider: 'deepseek', providers: { deepseek: make('deepseek'), openai: make('openai'), anthropic: make('anthropic'), custom: make('custom'), qoder: { ...make('qoder'), baseURL:'http://127.0.0.1:8788/v1', model:'kmodel_latest' } }, libraryPath: '/tmp/library', vaultPath: '', obsidianSubfolder: '', autoSummary: false, autoMemory: false, contextMaxChars: 12000, theme: 'light', readingTheme: 'white', annotationToolbar: 'floating' };
 }
 function frame(payload: unknown) { return `data: ${JSON.stringify(payload)}\r\n\r\n`; }
 function answer(response: ServerResponse, text: string) {

@@ -3,7 +3,7 @@
 ## 中文说明
 
 1. 在「设置 → AI」填写当前服务商的 API Key，选择支持视觉的模型并保存。「图片输入」默认自动识别能力；Kimi、GLM 可通过自定义服务商的官方地址预设配置。
-2. 在 PDF 工具栏选择「框选图表问 AI」，拖出需要讨论的区域；也可点「发送当前页给 AI」。两者都会先加入阅读伙伴的草稿，尚未调用模型。
+2. 点击对话输入框下方的「截图」，在当前阅读区拖出需要讨论的图表。双栏时先点击要截图的 PDF；悬浮阅读伙伴会暂时隐藏，框选完成或按 Esc 后恢复。也可使用 PDF 工具栏的「框选图表问 AI」或「发送当前页给 AI」。图片先加入草稿，尚未调用模型。
 3. 预览或移除图片，填写问题后发送。点图片下方的来源可回到相应 PDF 页；已发送图片可在对话记录中预览。
 
 Pairleaf 0.9.0 适配 DeepSeek、OpenAI/GPT、Anthropic/Claude、Kimi、GLM 五类接口，**并非每个型号都支持图片**。例如 DeepSeek 可用 `deepseek-flash`，Kimi 可用 `kimi-k3`；GLM 需选择 `glm-5v-turbo`、`glm-4.6v` 等视觉型号，普通文本型号不适用。请同时核对当前账号与接口的官方说明。
@@ -17,7 +17,7 @@ Pairleaf 0.9.0 适配 DeepSeek、OpenAI/GPT、Anthropic/Claude、Kimi、GLM 五�
 ## English guide
 
 1. In **Settings → AI**, enter your provider's API key, select a vision-capable model and save. **Image input** detects support by default. Kimi and GLM official endpoints are available through the custom-provider presets.
-2. Choose **Select a figure for AI** in the PDF toolbar and drag around the region, or choose **Send current page to AI**. Both add an image to the companion's draft without calling the model yet.
+2. Click **Capture image** below the chat input, then drag around a figure in the active PDF pane. With two panes, click the PDF you want first. The floating companion hides until you finish or press Escape. The PDF toolbar also offers **Select a figure for AI** and **Send current page to AI**. Images enter the draft without calling the model yet.
 3. Preview or remove the image, add your question and send. Its source button returns to the PDF page; sent images remain available for preview in the conversation.
 
 Pairleaf 0.9.0 adapts DeepSeek, OpenAI/GPT, Anthropic/Claude, Kimi and GLM interfaces, **not every model offered by these providers**. Examples include DeepSeek `deepseek-flash` and Kimi `kimi-k3`. GLM requires a vision model such as `glm-5v-turbo` or `glm-4.6v`, rather than a text-only model. Check your account's model access and the provider's current documentation.

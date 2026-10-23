@@ -11,7 +11,7 @@ const MAX_QUERY_CHARACTERS = 2000;
 class SearchFailure extends Error {}
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): value is RecordValue => value !== null && typeof value === 'object' && !Array.isArray(value);
-const labels: Record<NativeWebSearchProvider, string> = { deepseek: 'DeepSeek', openai: 'OpenAI', anthropic: 'Anthropic', kimi: 'Kimi', glm: 'GLM' };
+const labels: Record<NativeWebSearchProvider, string> = { deepseek: 'DeepSeek', openai: 'OpenAI', anthropic: 'Anthropic', kimi: 'Kimi', glm: 'GLM', qoder: 'Qoder' };
 const cleanText = (value: unknown, limit: number, key: string): string => typeof value === 'string'
   ? value.split(key).join('[API Key]').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, limit) : '';
 
@@ -181,6 +181,7 @@ export async function searchWeb(config: ProviderConfig, query: string, signal: A
   const t = (zh: string, en: string) => translate(language, zh, en);
   const provider = webSearchProvider(config);
   if (!provider) throw new SearchFailure(t('当前服务商、模型或地址暂不支持原生联网搜索，请使用受支持的官方配置。', 'The current provider, model or endpoint does not support native web search. Use a supported official configuration.'));
+  if (provider === 'qoder') throw new SearchFailure(t('Qoder 联网由当前对话请求直接完成，不能使用单独的搜索请求。', 'Qoder web search runs inside the current chat completion, not a separate search request.'));
   const label = labels[provider];
   const key = config.apiKey?.trim();
   if (!key) throw new SearchFailure(t(`请先在设置中输入 ${label} API Key。`, `Enter your ${label} API key in Settings first.`));

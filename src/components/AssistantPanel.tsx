@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Element } from 'hast';
-import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCheck, ChevronDown, Clipboard, Copy, FileText, FlaskConical, Globe, Highlighter, History, Lightbulb, LoaderCircle, MessageSquare, Mic, NotebookPen, Plus, RefreshCw, Search, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUp, ArrowUpRight, BookOpen, Brain, Check, CheckCheck, ChevronDown, Clipboard, Copy, FileText, FlaskConical, Globe, Highlighter, History, Lightbulb, LoaderCircle, MessageSquare, Mic, NotebookPen, Plus, RefreshCw, ScanLine, Search, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import type { ChatEvent, ChatRequest, Settings, TextSelection, Workspace } from '../../shared/types';
 import type { ReadingReport } from '../../shared/reading';
 import { MAX_CHAT_IMAGES, type DraftChatImage } from '../../shared/images';
@@ -34,6 +34,9 @@ interface Props {
   focusRequest?: { workspaceId: string; nonce: number };
   imageRequest?: { workspaceId: string; conversationId: string; nonce: number; image: DraftChatImage };
   onImageRequestConsumed?: (nonce: number) => void;
+  onCaptureImage?: () => void;
+  capturingImage?: boolean;
+  quoteSource?: { documentId: string; page: number };
   panelControls?: ReactNode;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
   voiceHost?: HTMLElement | null;
@@ -142,7 +145,7 @@ const MemoMarkdown = memo(function MemoMarkdown({ text, citationKey, onNavigate,
   return <ReactMarkdown remarkPlugins={plugins} urlTransform={markdownURL} components={components}>{text}</ReactMarkdown>;
 });
 
-export default function AssistantPanel({ workspace, settings, selection, onClearSelection, onWorkspace, onSettings, onError, onNavigate, focusRequest, imageRequest, onImageRequestConsumed, panelControls, dragHandleProps, voiceHost, voiceToggleRequest, onVoiceActiveChange }: Props) {
+export default function AssistantPanel({ workspace, settings, selection, onClearSelection, onWorkspace, onSettings, onError, onNavigate, focusRequest, imageRequest, onImageRequestConsumed, onCaptureImage, capturingImage, quoteSource, panelControls, dragHandleProps, voiceHost, voiceToggleRequest, onVoiceActiveChange }: Props) {
   const { language, locale, t } = useI18n();
   const STARTERS = useMemo(() => [
   { title: t("总结这篇论文", "Summarize this paper"), detail: t("抓住问题、方法与核心发现", "Questions, methods, and key findings"), icon: Sparkles, prompt: getSummaryPrompt(language), kind: 'summary' },
@@ -203,6 +206,12 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
   const scrollRef = useRef<HTMLDivElement>(null);
   const followStream = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const wasCapturingImage = useRef(false);
+  useLayoutEffect(() => {
+    const finished = wasCapturingImage.current && !capturingImage;
+    wasCapturingImage.current = !!capturingImage;
+    if (finished) inputRef.current?.focus({ preventScroll: true });
+  }, [capturingImage]);
   const lastFocusRequest = useRef<{ workspaceId: string; nonce: number } | null>(null);
   const chosenSelection = selection ?? clipboardSelection;
   const selectedSources = resolveReadingSources({ documents: workspace.documents, source, selection: chosenSelection });
@@ -501,7 +510,20 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
     if (result) setNotice({ zh: "已导出：{path}", en: "Exported: {path}", values: { path: result.path } });
   });
   const addToNotes = (text: string) => { setNotes(previous => `${previous.trim()}${previous.trim() ? '\n\n---\n\n' : ''}${text}`); setNotesStatus('saving'); setNotice({ zh: "已加入个人笔记", en: "Added to personal notes" }); };
-  const copyText = async (text: string) => { try { await navigator.clipboard.writeText(readableCitations(text, workspace.documents)); setNotice({ zh: "已复制", en: "Copied" }); } catch (cause) { setRetryableError(false); setError(errorText(cause)); } };
+  const copyText = async (text: string) => { try { await window.folio.copyText(readableCitations(text, workspace.documents)); setNotice({ zh: "已复制", en: "Copied" }); } catch (cause) { setRetryableError(false); setError(errorText(cause)); } };
+  const pasteQuote = () => runAction(async () => {
+    const scope = { workspaceId: workspace.id, conversationId: workspace.activeConversationId };
+    const doc = workspace.documents.find(item => item.id === (quoteSource?.documentId ?? workspace.layout.leftId)) ?? workspace.documents[0];
+    if (!doc) throw new Error(t('请先导入 PDF 文档。', 'Import a PDF first.'));
+    const page = quoteSource?.documentId === doc.id ? quoteSource.page : doc.view.page;
+    const text = await window.folio.readClipboardText();
+    const current = currentRef.current.workspace;
+    if (!mounted.current || current.id !== scope.workspaceId || current.activeConversationId !== scope.conversationId) return;
+    if (!text.trim()) throw new Error(t('剪贴板为空，请先复制需要讨论的文字。', 'The clipboard is empty. Copy the passage you want to discuss first.'));
+    currentRef.current.onClearSelection();
+    setClipboardSelection({ text, documentId: doc.id, documentName: doc.name, page, rects: [] });
+    inputRef.current?.focus({ preventScroll: true });
+  });
   const stopGeneration = () => {
     const activeRequest = requestRef.current;
     if (!activeRequest) return;
@@ -557,7 +579,7 @@ export default function AssistantPanel({ workspace, settings, selection, onClear
         {!!visibleDraftImages.length && <p className="fl-image-notice" data-status={vision.status} role="status">{vision.status === 'supported'
           ? t('这些图像将发送给当前模型 {model}，计入服务商用量。每轮最多 {max} 张、单张 4 MiB、合计 8 MiB。', 'These images will be sent to {model} and count toward provider usage. Up to {max} images, 4 MiB each and 8 MiB total.', { model: provider.model, max: MAX_CHAT_IMAGES })
           : <>{vision.reason[language]} {vision.suggestion[language]} <button type="button" onClick={onSettings}>{t('更改图片设置', 'Change image settings')}</button></>}</p>}
-        <div className="fl-composer"><textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label={t("向 AI 提问", "Ask AI")} placeholder={hasKey ? readingMode === 'deep' ? t("针对问题精读，或留空生成全文摘要", "Add a question, or leave empty for a full summary") : t("关于这篇论文，你想了解什么？", "What would you like to know about this paper?") : t("先连接 AI 服务，再开始讨论…", "Connect an AI service to start discussing…")} rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!requestId) submitDraft(); } if (event.key === 'Escape' && requestRef.current) stopGeneration(); }} /><div className="fl-composer-bottom"><label className="fl-source-picker"><LayersIcon /><select aria-label={t("AI 引用文档范围", "AI source documents")} value={source} onChange={event => setSource(event.target.value)}><option value="all">{t('全部文档 · {count}', 'All documents · {count}', { count: workspace.documents.length })}</option>{workspace.documents.map(doc => <option value={doc.id} key={doc.id}>{doc.role === 'main' ? t("正文", "Main") : t("补充", "Supplement")} · {doc.name}</option>)}</select><ChevronDown size={10} /></label><button className="fl-icon-button" title={t("粘贴剪贴板文字作为引用", "Paste clipboard text as a quote")} aria-label={t("粘贴引用", "Paste quote")} disabled={!!requestId} onClick={() => void runAction(async () => { const text = await navigator.clipboard.readText(); if (!text.trim()) throw new Error(t("剪贴板为空，请先复制需要讨论的文字。", "The clipboard is empty. Copy the passage you want to discuss first.")); const doc = workspace.documents.find(item => item.id === workspace.layout.leftId) ?? workspace.documents[0]; if (!doc) throw new Error(t("请先导入 PDF 文档。", "Import a PDF first.")); setClipboardSelection({ text, documentId: doc.id, documentName: doc.name, page: doc.view.page, rects: [] }); })}><Clipboard size={14} /></button>{(PLATFORM === 'darwin' || PLATFORM === 'win32') && <button className="fl-icon-button fl-voice-entry" aria-label={voice.state.active ? t("停止语音对话", "Stop voice conversation") : t("开启语音对话", "Start voice conversation")} title={t("语音对话", "Voice conversation")} aria-pressed={voice.state.active} onClick={() => voice.state.active ? void voice.controller.end() : void voice.controller.configure()}><Mic size={15} /></button>}{requestId ? <button className="fl-send-button stopping" aria-label={t("停止生成", "Stop generation")} title={t("停止生成", "Stop generation")} onClick={stopGeneration}><Square size={13} fill="currentColor" /></button> : <button className="fl-send-button" aria-label={readingMode === 'deep' ? t("开始整篇精读", "Start full-paper reading") : t("发送问题", "Send question")} title={readingMode === 'deep' ? t("开始整篇精读 · Enter", "Start full-paper reading · Enter") : t("发送 · Enter", "Send · Enter")} disabled={(!input.trim() && !draftImages.length && readingMode !== 'deep') || !hasKey || imageSendBlocked || actionBusy || !workspace.documents.length} onClick={submitDraft}><ArrowUp size={17} /></button>}</div></div>
+        <div className="fl-composer"><textarea ref={inputRef} value={input} onChange={event => setInput(event.target.value)} aria-label={t("向 AI 提问", "Ask AI")} placeholder={hasKey ? readingMode === 'deep' ? t("针对问题精读，或留空生成全文摘要", "Add a question, or leave empty for a full summary") : t("关于这篇论文，你想了解什么？", "What would you like to know about this paper?") : t("先连接 AI 服务，再开始讨论…", "Connect an AI service to start discussing…")} rows={2} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!requestId) submitDraft(); } if (event.key === 'Escape' && requestRef.current) stopGeneration(); }} /><div className="fl-composer-bottom"><label className="fl-source-picker"><LayersIcon /><select aria-label={t("AI 引用文档范围", "AI source documents")} value={source} onChange={event => setSource(event.target.value)}><option value="all">{t('全部文档 · {count}', 'All documents · {count}', { count: workspace.documents.length })}</option>{workspace.documents.map(doc => <option value={doc.id} key={doc.id}>{doc.role === 'main' ? t("正文", "Main") : t("补充", "Supplement")} · {doc.name}</option>)}</select><ChevronDown size={10} /></label><button type="button" className="fl-icon-button fl-capture-image" title={capturingImage ? t('取消截图', 'Cancel capture') : t('截图：在当前阅读区框选图表，预览后发送', 'Capture a figure in the active PDF pane, then preview and send')} aria-label={capturingImage ? t('取消截图', 'Cancel capture') : t('截图', 'Capture image')} aria-pressed={!!capturingImage} disabled={!onCaptureImage || !workspace.documents.length || draftImages.length >= MAX_CHAT_IMAGES || actionBusy} onClick={onCaptureImage}><ScanLine size={16} /></button><button type="button" className="fl-icon-button" title={t("粘贴剪贴板文字作为引用", "Paste clipboard text as a quote")} aria-label={t("粘贴引用", "Paste quote")} disabled={!!requestId || actionBusy} onClick={() => void pasteQuote()}><Clipboard size={14} /></button>{(PLATFORM === 'darwin' || PLATFORM === 'win32') && <button className="fl-icon-button fl-voice-entry" aria-label={voice.state.active ? t("停止语音对话", "Stop voice conversation") : t("开启语音对话", "Start voice conversation")} title={t("语音对话", "Voice conversation")} aria-pressed={voice.state.active} onClick={() => voice.state.active ? void voice.controller.end() : void voice.controller.configure()}><Mic size={15} /></button>}{requestId ? <button className="fl-send-button stopping" aria-label={t("停止生成", "Stop generation")} title={t("停止生成", "Stop generation")} onClick={stopGeneration}><Square size={13} fill="currentColor" /></button> : <button className="fl-send-button" aria-label={readingMode === 'deep' ? t("开始整篇精读", "Start full-paper reading") : t("发送问题", "Send question")} title={readingMode === 'deep' ? t("开始整篇精读 · Enter", "Start full-paper reading · Enter") : t("发送 · Enter", "Send · Enter")} disabled={(!input.trim() && !draftImages.length && readingMode !== 'deep') || !hasKey || imageSendBlocked || actionBusy || !workspace.documents.length} onClick={submitDraft}><ArrowUp size={17} /></button>}</div></div>
         <div className="fl-composer-caption"><button onClick={onSettings}><span className={`fl-small-dot ${hasKey ? '' : 'muted'}`} />{provider.model}{provider.thinking !== false && settings.activeProvider === 'deepseek' && t(" · 思考", " · Thinking")}</button><span>{t("↵ 发送 · ⇧↵ 换行", "↵ Send · ⇧↵ New line")}</span></div>
       </div>
     </>}
